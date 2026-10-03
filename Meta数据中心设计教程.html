@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>深入 Meta 数据中心设计：从 Fabric 到 AI 时代</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="%230A66E1"/><g stroke="%23fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 10h6M20 10h6"/><path d="M6 16h5M21 16h5"/><path d="M6 22h6M20 22h6"/><circle cx="16" cy="16" r="3.2" fill="%23fff" stroke="none"/></g></svg>'>
+<link rel="preconnect" href="https://miaoda.feishu.cn">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ink:#0e1c2a;
+  --ink-2:#16304a;
+  --paper:#f4f6f9;
+  --card:#ffffff;
+  --line:#dfe5ec;
+  --muted:#5c6c7b;
+  --blue:#0a66e1;
+  --blue-soft:#e6effc;
+  --teal:#0fa3a3;
+  --teal-soft:#e2f6f5;
+  --amber:#e8a33d;
+  --amber-soft:#fdf3e2;
+  --navy-panel:#0c2033;
+  --maxw:1120px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;color:var(--ink);background:var(--paper);
+  font-family:"Noto Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+  line-height:1.75;font-size:16px;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:"Space Grotesk","Noto Sans SC","PingFang SC",sans-serif;line-height:1.3;letter-spacing:-.01em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+/* progress + nav */
+#prog{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--blue),var(--teal));width:0;z-index:60}
+nav.top{position:sticky;top:0;z-index:50;background:rgba(244,246,249,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav.top .wrap{display:flex;align-items:center;gap:16px;height:54px}
+.brand{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-weight:700;color:var(--ink);white-space:nowrap;display:flex;align-items:center;gap:8px}
+.brand svg{flex:none}
+.chips{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips a{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-weight:500;font-size:13px;color:var(--muted);text-decoration:none;padding:6px 11px;border-radius:999px;white-space:nowrap;transition:.15s}
+.chips a:hover{color:var(--blue);background:var(--blue-soft)}
+.chips a.act{color:var(--blue);background:var(--blue-soft)}
+
+/* hero */
+header.hero{background:radial-gradient(1200px 500px at 80% -10%,#123a5e 0%,var(--navy-panel) 55%,#08131f 100%);color:#eaf2fa;padding:64px 0 40px;position:relative;overflow:hidden}
+header.hero .fg{position:relative;z-index:2}
+.kicker{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-weight:600;font-size:13px;letter-spacing:.16em;color:var(--teal);text-transform:uppercase}
+h1.title{font-size:clamp(28px,4.6vw,48px);font-weight:700;margin:14px 0 16px;max-width:20ch}
+.sub{font-size:clamp(15px,2vw,18px);color:#bcd0e4;max-width:60ch}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.tag{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-size:12px;font-weight:600;border:1px solid #2b4a68;color:#cfe0f0;padding:5px 11px;border-radius:999px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:34px;position:relative;z-index:2}
+.stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px 18px}
+.stat b{font-family:"Space Grotesk",sans-serif;font-size:26px;font-weight:700;color:#fff;display:block;line-height:1.1}
+.stat span{font-size:12.5px;color:#a9c2da}
+.hero-art{position:absolute;right:-60px;top:50%;transform:translateY(-50%);width:44%;opacity:.5;pointer-events:none;z-index:1}
+@media(max-width:820px){.stats{grid-template-columns:repeat(2,1fr)}.hero-art{display:none}}
+
+/* sections */
+section.block{padding:56px 0 8px}
+h2.sec{font-size:clamp(23px,3.2vw,32px);font-weight:700;margin:0 0 6px}
+.lede{color:var(--muted);max-width:78ch;font-size:16px;margin:0 0 26px}
+h3.subh{font-size:21px;font-weight:600;margin:34px 0 10px}
+p{margin:12px 0}
+ul.clean{margin:10px 0;padding-left:22px}
+ul.clean li{margin:8px 0}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;margin:18px 0}
+.note{border-left:4px solid var(--blue);background:var(--blue-soft);border-radius:0 12px 12px 0;padding:14px 18px;margin:18px 0;font-size:15px}
+.note.teal{border-color:var(--teal);background:var(--teal-soft)}
+.note.amber{border-color:var(--amber);background:var(--amber-soft)}
+.note b.lbl{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);display:block;margin-bottom:4px}
+.note.teal b.lbl{color:#0b7f80}
+.note.amber b.lbl{color:#b97a1f}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}}
+
+/* principles */
+.prin{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:22px 0}
+.prin .p{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 14px}
+.prin .p .n{font-family:"Space Grotesk",sans-serif;font-weight:700;color:var(--blue);font-size:13px}
+.prin .p h4{margin:6px 0 6px;font-size:15px}
+.prin .p p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.6}
+@media(max-width:900px){.prin{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.prin{grid-template-columns:1fr}}
+
+/* figures */
+figure{margin:22px 0}
+figure img,figure svg{width:100%;height:auto;border-radius:12px;border:1px solid var(--line);display:block}
+figure figcaption{font-size:13px;color:var(--muted);margin-top:8px;text-align:center}
+.chartbox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px}
+.chartbox .cap{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-size:13px;font-weight:600;padding:6px 10px 0}
+.chart{width:100%;height:360px}
+.chart.sm{height:300px}
+.digest{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0}
+.dig{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.dig b{font-family:"Space Grotesk",sans-serif;font-size:22px;color:var(--blue);display:block}
+.dig.teal b{color:var(--teal)}
+.dig span{font-size:12.5px;color:var(--muted)}
+
+/* tabs */
+.tabs{display:flex;gap:8px;margin:8px 0 4px;flex-wrap:wrap}
+.tabs button{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-weight:600;font-size:14px;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer;transition:.15s}
+.tabs button.act{color:var(--blue);background:var(--blue-soft);border-color:#c9dcf7}
+.tab-panel{display:none}
+.tab-panel.act{display:block}
+
+/* timeline */
+.tl{margin:26px 0}
+.tl-row{display:grid;grid-template-columns:96px 26px 1fr;gap:0 18px}
+.tl-year{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-weight:700;font-size:14px;color:var(--blue);text-align:right;padding-top:2px;white-space:nowrap}
+.tl-axis{position:relative}
+.tl-axis::before{content:"";position:absolute;top:0;bottom:0;left:calc(50% - 1px);width:2px;background:var(--line)}
+.tl-dot{width:12px;height:12px;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 2px var(--blue);position:absolute;top:6px;left:50%;transform:translateX(-50%);z-index:1}
+.tl-row.is-teal .tl-dot{background:var(--teal);box-shadow:0 0 0 2px var(--teal)}
+.tl-row.is-amber .tl-dot{background:var(--amber);box-shadow:0 0 0 2px var(--amber)}
+.tl-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:16px}
+.tl-card h4{margin:0 0 4px;font-size:16px}
+.tl-card p{margin:0;font-size:14px;color:var(--muted)}
+.tl-card .tl-sub{font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-size:12px;font-weight:600;color:var(--blue);display:block;margin-bottom:2px}
+@media(max-width:640px){.tl-row{grid-template-columns:1fr;gap:4px}.tl-year{text-align:left}.tl-axis{display:none}}
+
+/* tables */
+.tblwrap{overflow-x:auto;margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
+table .mono{font-size:13px}
+th,td{padding:11px 12px;text-align:left;vertical-align:top}
+th{background:#f0f4f9;font-family:"Space Grotesk","Noto Sans SC",sans-serif;font-weight:600;font-size:13px;color:var(--ink-2)}
+tr+tr{border-top:1px solid var(--line)}
+td.hi{color:var(--blue);font-weight:600}
+
+/* glossary / refs */
+.gloss{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:20px 0}
+.gterm{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 16px}
+.gterm b{font-family:"Space Grotesk","Noto Sans SC",sans-serif;color:var(--ink-2)}
+.gterm span{font-size:13px;color:var(--muted);display:block;margin-top:2px}
+.refs{list-style:none;padding:0;margin:18px 0}
+.refs li{padding:9px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.refs li:last-child{border-bottom:none}
+.refs .y{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--muted);margin-right:10px;display:inline-block;min-width:52px}
+.keydot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);margin-right:7px;vertical-align:1px}
+.dsfstack{display:none}
+@media(max-width:760px){.dsfstack{display:block}.tblwrap.dsftable{display:none}}
+@media(max-width:640px){.stat span{font-size:13px}.prin .p p{font-size:14px}.tl-card p{font-size:14.5px}.dig span{font-size:13px}.refs li{font-size:13.5px}}
+
+footer{padding:44px 0 60px;color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);margin-top:40px}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="返回顶部">
+      <svg width="22" height="22" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0A66E1"/><g stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 10h6M20 10h6"/><path d="M6 16h5M21 16h5"/><path d="M6 22h6M20 22h6"/><circle cx="16" cy="16" r="3.2" fill="#fff" stroke="none"/></g></svg>
+      Meta DC · 教程
+    </a>
+    <div class="chips">
+      <a href="#philosophy">设计哲学</a>
+      <a href="#fabric">2014 Fabric</a>
+      <a href="#f16">2019 F16</a>
+      <a href="#ai-inflection">AI 拐点</a>
+      <a href="#ai-scale">AI 规模化</a>
+      <a href="#ai-net">AI 网络</a>
+      <a href="#storage">存储与软件</a>
+      <a href="#throughline">贯穿主线</a>
+      <a href="#refs">参考来源</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <svg class="hero-art" viewBox="0 0 600 400" aria-hidden="true">
+    <g stroke="#2b5f8f" stroke-width="1.4" opacity=".8">
+      <path d="M300 40 L120 180 L240 300 L420 180 Z" fill="none"/>
+      <path d="M300 40 L480 180 L420 300 L240 300 L120 180 Z" fill="none"/>
+      <path d="M120 180 L240 300 M480 180 L420 300 M240 300 L420 300" fill="none"/>
+    </g>
+    <g fill="#3f7fbb">
+      <circle cx="300" cy="40" r="6"/><circle cx="120" cy="180" r="6"/><circle cx="240" cy="300" r="6"/>
+      <circle cx="420" cy="180" r="6"/><circle cx="480" cy="180" r="6"/><circle cx="420" cy="300" r="6"/>
+    </g>
+  </svg>
+  <div class="wrap fg">
+    <div class="kicker">深度指南 · Meta 工程团队</div>
+    <h1 class="title">深入 Meta 数据中心设计</h1>
+    <p class="sub">从 2014 年的解耦式网络 Fabric，到 2019 年的 F16&nbsp;/&nbsp;Minipack 重塑，再到如今的吉瓦级 AI 集群与自研芯片——一份基于 Meta 官方工程博客打造的教程。</p>
+    <div class="meta-row">
+      <span class="tag">网络 Fabric</span>
+      <span class="tag">开放计算项目 OCP</span>
+      <span class="tag">GPU 集群</span>
+      <span class="tag">自研芯片</span>
+      <span class="tag">电力与散热</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>10×</b><span>相对集群方案，2014 Fabric 使楼内容量提升 10 倍</span></div>
+      <div class="stat"><b>1.6 Tbps</b><span>2019 F16 设计中的单机架带宽（从 160 Gbps 起步）</span></div>
+      <div class="stat"><b>129k</b><span>Meta 最大单一集群中的 H100 GPU 数，靠腾空 5 个数据中心建成</span></div>
+      <div class="stat"><b>1 GW</b><span>横跨多栋建筑的 Prometheus AI 集群设计容量</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ 第 0 章：设计哲学 ============ -->
+  <section class="block" id="philosophy">
+    <h2 class="sec">始终不变的设计哲学</h2>
+    <p class="lede">Meta 的数据中心故事，就是一套<em>反复出现的思想</em>在负载从网络流量转向 AI 训练时不断复用。在讲具体拓扑之前，先认识串联每一代架构的五条原则。</p>
+    <div class="prin">
+      <div class="p"><div class="n">01</div><h4>解耦</h4><p>把庞大、专用的设备拆解成大量小巧、一致的积木式构件，可从多个供应商采购。</p></div>
+      <div class="p"><div class="n">02</div><h4>全面开放</h4><p>2011 年联合创立 OCP；开放硬件、FBOSS 与 OCP-SAI 让 Meta（及所有人）都能大规模采购通用部件。</p></div>
+      <div class="p"><div class="n">03</div><h4>持续自动化</h4><p>"像管理服务器一样管理交换机"：单一软件镜像、fabric 级配置、自动修复代替人工排障。</p></div>
+      <div class="p"><div class="n">04</div><h4>面向电力与光模块</h4><p>把物理约束（电力预算、光模块可得性）当作每个架构决策的一等输入。</p></div>
+      <div class="p"><div class="n">05</div><h4>保持简单，面向规模</h4><p>优先选择成熟技术而非激进风险；部件更少、跳数更少、活动件更少——即便在超大规模下亦然。</p></div>
+    </div>
+    <div class="note">
+      <b class="lbl">为什么这很重要</b>
+      Meta 数据中心内部的"机器到机器"流量，比面向用户的流量高出"几个数量级"。下文每一个设计决策，都是为了在指数级增长之下，让内部网络更快、更省，并且可由小团队轻松运维。
+    </div>
+  </section>
+
+  <!-- ============ 时间线 ============ -->
+  <section class="block" id="timeline">
+    <h2 class="sec">二十五年一图</h2>
+    <p class="lede">主线从软件扩展，到专用网络硬件，再到整个数据中心围绕 GPU 重组。</p>
+    <div class="tl">
+      <div class="tl-row">
+        <div class="tl-year">2004–2010</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">软件先行扩展</span><h4>从"每所大学一个数据库"到全球社交图谱</h4><p>Memcache、TAO、信息流排序与照片服务撑起技术栈；Facebook 走出托管机房，在俄勒冈州普赖恩维尔与北卡福里斯特城建成首批自建数据中心。</p></div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-year">2010–2014</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">扩展撞上网络</span><h4>集群触顶</h4><p>基于集群的网络（大型高基数交换机，3+1 冗余）受制于端口密度，并迫使集群间过度订阅。机器间流量一年内翻倍的速度越来越快。</p></div>
+      </div>
+      <div class="tl-row is-teal">
+        <div class="tl-year">2014</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">解耦降临</span><h4>数据中心 Fabric</h4><p>整栋楼成为一张非过度订阅的网络，由小型"Pod"与"Plane"构成，基于中型交换机、BGP + ECMP 与重度自动化。首个部署于 Altoona。</p></div>
+      </div>
+      <div class="tl-row is-teal">
+        <div class="tl-year">2019</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">容量 4 倍，芯片更少</span><h4>F16 拓扑 + Minipack</h4><p>16 个单芯片 100G Plane 带来 1.6 Tbps/机架，fabric ASIC 比 400G 方案少 3 倍。模块化的 Minipack（以及与 Arista 联合开发的 7368X4）运行 FBOSS。</p></div>
+      </div>
+      <div class="tl-row is-amber">
+        <div class="tl-year">2020–2023</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">AI 拐点</span><h4>GPU 重塑一切</h4><p>GPU 集群取代"采购廉价易失 CPU + 用软件掩盖故障"。RSC（2022 年 16k A100）；Grand Teton 平台；2023 年底两个 24,576-GPU H100 集群。</p></div>
+      </div>
+      <div class="tl-row is-amber">
+        <div class="tl-year">2024–2026</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">AI 大规模落地</span><h4>129k 集群、自研芯片、吉瓦级</h4><p>129k-H100 集群；Catalina/GB200 机架高达 140 kW；MTIA 芯片；DSF 与 NSF Fabric；BAG 聚合构建 1 GW 的 Prometheus 集群。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 第 2 章：2014 FABRIC ============ -->
+  <section class="block" id="fabric">
+    <h2 class="sec">2014 —— 数据中心 Fabric</h2>
+    <p class="lede">Meta 的"下一代"网络把整栋楼变成一张扁平、高性能的 Fabric，取代了层层过度订阅的集群层级结构。</p>
+
+    <h3 class="subh">集群的问题</h3>
+    <p>传统集群是一个大型部署单元：数百个机柜汇聚到少数几台大型高基数集群交换机上。它有硬性局限：</p>
+    <ul class="clean">
+      <li><b>端口密度封顶规模。</b>更大的集群需要更大的交换机，只能从少数供应商获得；而这些"XXL"最前沿设备内部架构私有，需要专门经验去运维与排障。</li>
+      <li><b>想当然的过度订阅。</b>集群间带宽远低于集群内带宽，迫使应用留在单个集群内——而这正是分布式应用不想要的。</li>
+      <li><b>故障爆炸半径。</b>大范围区域依赖少数几台设备；硬件或软件故障影响巨大。</li>
+      <li><b>永无止境的权衡。</b>集群规模、机架带宽与集群外带宽之间的矛盾始终无法自行解决。</li>
+    </ul>
+    <p>解法：<b>让整栋楼成为一张网络</b>，用大量小巧一致的单元替代少数巨型设备。</p>
+
+    <h3 class="subh">Fabric 模型：Pod 与 Plane</h3>
+    <p>核心思想是把网络<b>解耦成一致的积木</b>。网络由"Pod"（48 机架单元，由四台 <span class="mono">fabric switches</span> 服务）与四个独立的 <b>Plane</b>（每 Plane 可扩展到 48 台 <span class="mono">spine switches</span>）构成。每个 Pod 的每台 fabric switch 都连接到本 Plane 的每台 spine switch。</p>
+
+    <figure>
+      <svg viewBox="0 0 920 470" role="img" aria-label="2014 数据中心 fabric 拓扑示意图">
+        <g font-family="Noto Sans SC, sans-serif" font-size="13">
+          <text x="460" y="26" text-anchor="middle" font-weight="700" fill="#0e1c2a">4 个独立 Spine Plane</text>
+          <g>
+            <g fill="#0a66e1"><rect x="70" y="46" width="150" height="26" rx="6"/><rect x="300" y="46" width="150" height="26" rx="6"/><rect x="530" y="46" width="150" height="26" rx="6"/><rect x="760" y="46" width="150" height="26" rx="6"/></g>
+            <g fill="#ffffff" font-size="12" text-anchor="middle" font-weight="600">
+              <text x="145" y="64">Spine · Plane 1</text><text x="375" y="64">Spine · Plane 2</text>
+              <text x="605" y="64">Spine · Plane 3</text><text x="835" y="64">Spine · Plane 4</text>
+            </g>
+          </g>
+          <text x="460" y="108" text-anchor="middle" font-weight="700" fill="#0e1c2a">每 Pod 的 fabric switch（每 Pod 4 台）</text>
+          <g>
+            <g fill="#0fa3a3"><rect x="70" y="128" width="150" height="26" rx="6"/><rect x="300" y="128" width="150" height="26" rx="6"/><rect x="530" y="128" width="150" height="26" rx="6"/><rect x="760" y="128" width="150" height="26" rx="6"/></g>
+            <g fill="#ffffff" font-size="12" text-anchor="middle" font-weight="600">
+              <text x="145" y="146">FSW 1</text><text x="375" y="146">FSW 2</text><text x="605" y="146">FSW 3</text><text x="835" y="146">FSW 4</text>
+            </g>
+          </g>
+          <g stroke="#9db8d6" stroke-width="1.2" opacity=".7">
+            <line x1="145" y1="72" x2="145" y2="128"/><line x1="375" y1="72" x2="375" y2="128"/>
+            <line x1="605" y1="72" x2="605" y2="128"/><line x1="835" y1="72" x2="835" y2="128"/>
+          </g>
+          <text x="460" y="196" text-anchor="middle" font-weight="700" fill="#0e1c2a">服务器 Pod —— 每个 48 机架，TOR 接向全部 4 台 fabric switch</text>
+          <g>
+            <g fill="#16304a" stroke="#2b4a68">
+              <rect x="50" y="212" width="150" height="70" rx="8"/><rect x="260" y="212" width="150" height="70" rx="8"/>
+              <rect x="470" y="212" width="150" height="70" rx="8"/><rect x="680" y="212" width="150" height="70" rx="8"/>
+            </g>
+            <g fill="#cfe0f0" font-size="12" text-anchor="middle">
+              <text x="125" y="242">Pod · 48 机架</text><text x="335" y="242">Pod · 48 机架</text>
+              <text x="545" y="242">Pod · 48 机架</text><text x="755" y="242">Pod · 48 机架</text>
+              <text x="125" y="262" font-size="11" fill="#93aec9">TOR × 4·40G</text>
+              <text x="335" y="262" font-size="11" fill="#93aec9">TOR × 4·40G</text>
+              <text x="545" y="262" font-size="11" fill="#93aec9">TOR × 4·40G</text>
+              <text x="755" y="262" font-size="11" fill="#93aec9">TOR × 4·40G</text>
+            </g>
+          </g>
+          <g stroke="#7fb2e8" stroke-width="1.5">
+            <line x1="145" y1="154" x2="125" y2="212"/><line x1="375" y1="154" x2="335" y2="212"/>
+            <line x1="605" y1="154" x2="545" y2="212"/><line x1="835" y1="154" x2="755" y2="212"/>
+          </g>
+          <g>
+            <text x="460" y="330" text-anchor="middle" font-weight="700" fill="#0e1c2a">边缘 Pod → 骨干</text>
+            <rect x="350" y="346" width="220" height="34" rx="8" fill="#e8a33d"/>
+            <text x="460" y="368" text-anchor="middle" font-size="12.5" fill="#fff" font-weight="600">边缘 Pod · 最高 7.68 Tbps</text>
+          </g>
+          <g stroke="#d9b06b" stroke-width="1.5"><line x1="460" y1="282" x2="460" y2="346"/></g>
+          <text x="460" y="442" text-anchor="middle" font-size="12" fill="#5c6c7b">全三层 · BGP + ECMP · "分布式控制、集中覆盖" · 无状态积木</text>
+        </g>
+      </svg>
+      <figcaption>图 1 —— 2014 Fabric：一致的 Pod 通过 Spine Plane 互联，边缘 Pod 将楼栋接入骨干。（示意图，参考 Meta 博文。）</figcaption>
+    </figure>
+
+    <div class="digest">
+      <div class="dig"><b>160 Gbps</b><span>单机架上行（4×40G TOR），服务 10G 服务器</span></div>
+      <div class="dig teal"><b>4 : 1 → 1 : 1</b><span>从 4:1 过度订阅起步，通过增加 spine 交换机扩展到无阻塞</span></div>
+      <div class="dig"><b>10×</b><span>相对等效集群方案，楼内容量提升，可增长至 50× 以上</span></div>
+      <div class="dig teal"><b>48 机架</b><span>适合任意机房平面布局的统一 Pod 尺寸</span></div>
+    </div>
+
+    <h3 class="subh">值得借鉴的设计决策</h3>
+    <ul class="clean">
+      <li><b>单一协议、单一控制哲学。</b>全部使用纯 BGP4，叠加可纯软件覆盖路由路径的集中控制器——"分布式控制、集中式覆盖"。大量使用带流哈希的 ECMP，负载分布近乎理想。</li>
+      <li><b>为规模而规划，而非为上线首日。</b>预建全部无源基础设施（"骨架"），从 4:1 过度订阅、每 Plane 12/48 台 spine 起步；需要时再加 spine 设备即可升到 2:1 或 1:1，无需重新设计。</li>
+      <li><b>物理布局本身就是设计。</b>Spine 与边缘设备位于楼栋中心的 BDF 机房并早期预装；各数据大厅以相同方式接入。长距离"直线"主干让布线简单；每个 Spine Plane 是一个可安全下线维护的故障域。</li>
+      <li><b>在设备之上自动化。</b>配置定义在 fabric 层，再向下渲染到每台设备；设备自动发现自身角色；监控以基线与离群值为线索并自动修复。"整体行为比单台设备或链路更重要。"</li>
+      <li><b>通过"虚拟集群"向后兼容。</b>集群以逻辑命名区域的形式保留在 fabric 上，因此技术栈其余部分无需改动。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 第 3 章：F16 ============ -->
+  <section class="block" id="f16">
+    <h2 class="sec">2019 —— F16 与 Minipack</h2>
+    <p class="lede">四年过去，fabric 已服务 15 个地区 26 亿人。要在不被电力与光模块约束压垮的前提下把容量翻四倍，Meta 重写了拓扑与交换机本身。</p>
+
+    <div class="grid2">
+      <figure>
+        <img src="https://media.doubao.com/space/api/box/stream/download/all_by_mount_point/QUZeb2l7hoEwoexvetSc0RwOned" alt="Meta 数据中心内的服务器机架阵列" loading="lazy">
+        <figcaption>F16 为之设计的那种设施——密集机架、精细管理的布线，以及把电力当作硬预算。</figcaption>
+      </figure>
+      <div>
+        <h3 class="subh" style="margin-top:6px">两股压力，两个约束</h3>
+        <p>需求要求<b>更高的单机架速率</b>（1.6T 及以上）与<b>更大的区域</b>（每区从 3 栋扩到 6 栋）。但网络不能吃掉一个区域不成比例的电力，而且业界在 Meta 的规模与节奏下供不上 400G 光模块。</p>
+        <p><b>转折点：</b>不再追逐 400G 链路，改用成熟的 <span class="mono">100G CWDM4-OCP</span> 光模块，获得<em>同样的</em> 4 倍容量——通过拆成更多、更小的 Plane。</p>
+      </div>
+    </div>
+
+    <h3 class="subh">F4 → F16：容量相同，芯片骤减</h3>
+    <p>两条路径都用博通的 <span class="mono">Tomahawk 3</span>（TH3）ASIC。"F4"方案需要 4 台多芯片 400G fabric switch（每 Pod 48 个 ASIC）；F16 方案则构建 <b>16 个单芯片 100G Plane</b>，每 Pod 仅 <b>16 个 ASIC</b>——fabric 芯片与控制面少 3 倍，功耗是上一代 Backpack 的一半。</p>
+
+    <div class="chartbox">
+      <div class="cap">F4 vs F16 —— 同样 1.6 Tbps/机架，但更扁平、更省</div>
+      <div class="tabs">
+        <button data-t="a" class="act">F4（4×400G）</button>
+        <button data-t="b">F16（16×100G）</button>
+      </div>
+      <div id="chartA" class="chart" data-tab="a"></div>
+      <div id="chartB" class="chart" data-tab="b" style="display:none"></div>
+    </div>
+
+    <div class="digest">
+      <div class="dig"><b>48 → 16</b><span>每 Pod 的 fabric switch ASIC + 控制面</span></div>
+      <div class="dig teal"><b>9 → 4</b><span>拓扑中的芯片层级（扁平 2.25 倍）</span></div>
+      <div class="dig"><b>6 跳</b><span>Fabric 内路径，总是最佳情况（原来 6–12）</span></div>
+      <div class="dig teal"><b>8 跳</b><span>楼栋到楼栋路径（原来最多 24）</span></div>
+    </div>
+
+    <h3 class="subh">Minipack：一颗 ASIC，多种角色</h3>
+    <p>Minipack 是<b>单颗 12.8T ASIC 上的 128 口 100G 交换机</b>，功耗与空间仅为多芯片 Backpack 的一半——却通过可插拔的<b>端口接口模块（PIMs）</b>保留机框的灵活性：PIM-16Q 支持 16×100G，或在重定时器模式下 8×200G 或 16×40G；PIM-4DD 支持 4×400G。同一台设备可充当 fabric switch、spine 或聚合器，并随光模块成熟逐代升级。</p>
+    <ul class="clean">
+      <li><b>MiniLake 控制模块：</b>自定义 COM-Express 微服务器，"像服务器一样"管理交换机。</li>
+      <li><b>反向重定时器（reverse gearboxes）：</b>把 TH3 的 50G PAM4 SerDes 桥接到成熟的 25G-NRZ 100G 光模块。</li>
+      <li><b>HGRID：</b>聚合层把区域扩展到六栋配备 F16 的楼栋，让东西向流量更扁平。</li>
+      <li><b>第二货源：</b>联合设计的 Arista 7368X4 提供供应链冗余；两者都运行 FBOSS 并贡献给 OCP。</li>
+    </ul>
+    <div class="note teal">
+      <b class="lbl">模式再次重演</b>
+      "把完整设计包贡献给 OCP"、"一颗单芯片满足多种角色"、"像管理服务器一样管理交换机"、"尽早上线、留在生产、持续迭代"。这些与 2014 年同源的原则，如今应用在交换机硬件本身上。
+    </div>
+  </section>
+
+  <!-- ============ 第 4 章：AI 拐点 ============ -->
+  <section class="block" id="ai-inflection">
+    <h2 class="sec">2020–2023 —— AI 拐点</h2>
+    <p class="lede">AI 负载击穿了十年来的假设。CPU 是加载-存储型机器；GPU 是向量/矩阵机器，算力高几个数量级。这改变了数据中心的一切。</p>
+
+    <h3 class="subh">从"掩盖故障"到"保住作业"</h3>
+    <p>网络负载靠购买廉价易失的 CPU 并用软件掩盖故障来扩展。AI 则不同：<b>单个训练作业要在数千块 GPU 上同步运行</b>，任何一块掉队或故障都会拖垮整个作业。Meta 最早的 AI 集群互联 4000 块 GPU；随着 LLM 出现，作业规模在数周内从 128 块 GPU 涨到 2000 再到 4000。通过与业界协作，Meta 把训练中断率降低了约 50 倍。</p>
+
+    <h3 class="subh">Grand Teton 与 24k H100 集群</h3>
+    <p>2022 年在 OCP 上发布的 <b>Grand Teton</b> 是 Meta 自研 GPU 平台：一个把电力、控制、计算与 fabric 接口集成的整体式机箱，含 8 块 GPU 与 1:1 的 GPU 到 RDMA 网卡映射，并贡献给 OCP。2023 年底 Meta 建成<b>两个 24,576-GPU H100 集群</b>——一个走 RoCE、一个走 InfiniBand——每个都按"吃满一栋楼的可用电力"（通常低几十兆瓦）来设计，用于训练 Llama 3。</p>
+
+    <div class="grid2">
+      <div class="card">
+        <h4>集群 1 —— RoCE</h4>
+        <p>基于 Arista 7800 的 RDMA over Converged Ethernet，配 <span class="mono">Wedge400</span> 与 <span class="mono">Minipack2</span> OCP 机架交换机。</p>
+      </div>
+      <div class="card">
+        <h4>集群 2 —— InfiniBand</h4>
+        <p>NVIDIA <span class="mono">Quantum2</span> InfiniBand Fabric。两者都互联 400G 端点。</p>
+      </div>
+    </div>
+
+    <h3 class="subh">在紧张的电力预算下做工程</h3>
+    <p>硬件交付周期很长，所以 Meta 选择改造：把 Grand Teton 的 GPU TDP 提到 <b>700W</b>、换用 HBM3——但必须留在现有<b>风冷</b>环境中，从而引发机械与热设计重构和重新验证。它还重组了数据大厅：把支撑性"reader"服务挪出去，尽量塞入 GPU 机架，以最大化计算密度与网络规模。</p>
+
+    <div class="note amber">
+      <b class="lbl">受电力限制的设计法则</b>
+      数据中心越来越<em>受电力约束，而非空间约束</em>。集群规模如今由"一栋楼的可用电力"决定，而不是网络端口密度——恰好是 2014 年问题的镜像。
+    </div>
+  </section>
+
+  <!-- ============ 第 5 章：AI 规模化 ============ -->
+  <section class="block" id="ai-scale">
+    <h2 class="sec">2024–2026 —— AI 大规模落地</h2>
+    <p class="lede">曲线继续陡峭上行：129k-GPU 单集群、单机架功率破 100 kW、自研芯片，以及首个吉瓦级 AI 集群。</p>
+
+    <div class="chartbox">
+      <div class="cap">Meta 最大的单一训练集群（GPU 数）—— 规模化的故事</div>
+      <div id="chartC" class="chart"></div>
+    </div>
+
+    <h3 class="subh">一个集群 129,000 块 GPU</h3>
+    <p>为了再上一个数量级，Meta 做了一件史无前例的事：<b>腾空五座生产数据中心</b>，在几个月内建成一个 129k-H100 集群。（到 2024 年底，舰队目标为 35 万块 H100——折合约 60 万块 H100 的算力。）仅 Llama 3.1 405B 就在 1.6 万块 H100、15 万亿 token 上完成了训练。</p>
+
+    <h3 class="subh">Catalina 机架与电力墙</h3>
+    <p>2024 年 OCP 上 Meta 发布 <b>Catalina</b>，一款围绕 NVIDIA <span class="mono">GB200 Grace Blackwell</span> 超芯片、基于新 ORv3 规范、支持最高 <b>140 kW</b> 的高功率机架。一个 Catalina Pod 有六个机架：两架计算（72 块 Blackwell GPU，约 140 kW）加四架<b>风助液冷（AALC）</b>机架——因为传统数据大厅没有机房级液冷。该 Pod 提供约 360 PFLOPS FP16 算力——功耗是典型 CPU 的 800 倍以上，算力则是其数十万倍。</p>
+
+    <div class="grid2">
+      <figure>
+        <img src="https://media.doubao.com/space/api/box/stream/download/all_by_mount_point/QJD8bgSXsotR64xuDfpcde6xneh" alt="一位数据中心工程师在服务器机架旁工作" loading="lazy">
+        <figcaption>从网络交换机到 GPU，同样的信条：开放硬件、自研设计、像服务器一样运维。</figcaption>
+      </figure>
+      <div>
+        <h3 class="subh" style="margin-top:6px">自研芯片：MTIA</h3>
+        <p><b>MTIA</b>（Meta 训练与推理加速器）是 Meta 的自研芯片家族。MTIA v1 于 2023 年问世；<b>MTIA v2</b>（2024）为排序与推荐<em>推理</em>优化，已在广告负载中规模化部署，相对商用芯片带来显著能效提升。面向排序/推荐的训练芯片正在爬坡量产，更多芯片在研。</p>
+        <p>异构是有意为之——Meta 同时运行 AMD MI300X、H200、B200、GB200 与 MTIA——这正是<b>开放标准</b>（PyTorch、Triton、OCP）重要的原因：一致的编程接口让工程师面向任意加速器。</p>
+      </div>
+    </div>
+
+    <h3 class="subh">芯片路线图走向何方</h3>
+    <ul class="clean">
+      <li><b>先进封装：</b>掩模版尺寸被限制在 830 mm²，规模化意味着通过 2.5D/3D 封装的 Chiplet——带来新的散热与能效挑战。</li>
+      <li><b>内存解耦：</b>推理模型与测试时推理给内存加压；预期 HBM 贴着 Chiplet 堆叠，甚至可能把内存放到片外/机外。</li>
+      <li><b>硅光：</b>突破 3.2T"硅海岸线"、摆脱功耗大户背板的路径，用功耗换取距离与规模。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 第 6 章：AI 网络 ============ -->
+  <section class="block" id="ai-net">
+    <h2 class="sec">AI 网络：Scale-out 与 Scale-up</h2>
+    <p class="lede">AI 集群需要一张专用、隔离的后端网络，以高带宽、低且受控的时延连接每一块 GPU。这正是 Meta 的 fabric 血脉与 AI 时代正面交汇之处。</p>
+
+    <h3 class="subh">AI Zone Fabric</h3>
+    <p>训练时，每个集群运行<b>两张独立网络</b>：用于数据摄取与检查点的前端（FE）网络，以及用于训练流量的后端（BE）网络。后端是两级 Clos 的"AI Zone"：<span class="mono">RTSW</span> 机架训练交换机（机架内用铜质 DAC 做 scale-up）→ <span class="mono">CTSW</span> 集群训练交换机（scale-out、深缓冲）→ <span class="mono">ATSW</span> 跨 Zone 聚合。多数 AI 容量走 <b>RoCEv2</b> 传输。</p>
+
+    <figure>
+      <svg viewBox="0 0 920 330" role="img" aria-label="AI Zone 三层后端网络示意图">
+        <g font-family="Noto Sans SC, sans-serif" font-size="13">
+          <text x="460" y="24" text-anchor="middle" font-weight="700" fill="#0e1c2a">后端 AI Zone —— 专用训练 Fabric</text>
+          <g fill="#0a66e1"><rect x="120" y="50" width="150" height="28" rx="7"/><rect x="385" y="50" width="150" height="28" rx="7"/><rect x="650" y="50" width="150" height="28" rx="7"/></g>
+          <g fill="#fff" text-anchor="middle" font-size="12.5" font-weight="600"><text x="195" y="69">ATSW · 聚合</text><text x="460" y="69">ATSW · 聚合</text><text x="725" y="69">ATSW · 聚合</text></g>
+          <g fill="#0fa3a3"><rect x="120" y="140" width="150" height="28" rx="7"/><rect x="385" y="140" width="150" height="28" rx="7"/><rect x="650" y="140" width="150" height="28" rx="7"/></g>
+          <g fill="#fff" text-anchor="middle" font-size="12.5" font-weight="600"><text x="195" y="159">CTSW · 集群 Spine</text><text x="460" y="159">CTSW · 集群 Spine</text><text x="725" y="159">CTSW · 集群 Spine</text></g>
+          <g fill="#16304a" stroke="#2b4a68"><rect x="120" y="230" width="150" height="34" rx="7"/><rect x="385" y="230" width="150" height="34" rx="7"/><rect x="650" y="230" width="150" height="34" rx="7"/></g>
+          <g fill="#cfe0f0" text-anchor="middle" font-size="12"><text x="195" y="251">RTSW · 机架</text><text x="460" y="251">RTSW · 机架</text><text x="725" y="251">RTSW · 机架</text></g>
+          <g stroke="#9db8d6" stroke-width="1.3"><line x1="195" y1="78" x2="195" y2="140"/><line x1="460" y1="78" x2="460" y2="140"/><line x1="725" y1="78" x2="725" y2="140"/><line x1="195" y1="168" x2="195" y2="230"/><line x1="460" y1="168" x2="460" y2="230"/><line x1="725" y1="168" x2="725" y2="230"/></g>
+          <g stroke="#7fb2e8" stroke-width="1.2" opacity=".6"><line x1="270" y1="64" x2="385" y2="64"/><line x1="535" y1="64" x2="650" y2="64"/><line x1="270" y1="154" x2="385" y2="154"/><line x1="535" y1="154" x2="650" y2="154"/></g>
+          <g fill="#5c6c7b" font-size="12" text-anchor="middle">
+            <text x="460" y="292">GPU 机架经铜质 DAC 接入 RTSW；RTSW → CTSW 走 400G 单模光纤。</text>
+            <text x="460" y="310">两级 Clos · RoCEv2 · 深缓冲 CTSW 实现无损传输</text>
+          </g>
+        </g>
+      </svg>
+      <figcaption>图 2 —— AI Zone 后端：RTSW（scale-up）→ CTSW（scale-out）→ ATSW（聚合）。（示意图，参考 RoCE 博文。）</figcaption>
+    </figure>
+
+    <h3 class="subh">DSF 与 NSF：不同任务的两张 Fabric</h3>
+    <p>2025 年 OCP 上，Meta 分享了两套互补的下一代 Fabric 架构：</p>
+    <div class="tblwrap dsftable">
+      <table style="width:100%">
+        <colgroup><col style="width:18%"><col style="width:41%"><col style="width:41%"></colgroup>
+        <thead><tr><th></th><th>DSF — 解耦调度 Fabric</th><th>NSF — 非调度 Fabric</th></tr></thead>
+        <tbody>
+          <tr><td><b>机制</b></td><td>基于 VOQ（虚拟输出队列）的调度，由开放的 OCP-SAI + FBOSS 驱动</td><td>浅缓冲、解耦的以太网交换机</td></tr>
+          <tr><td><b>适用场景</b></td><td>跨整栋建筑的 Scale-out 互联；完整 DSF L2 区约 1.8 万块 800G GPU</td><td>低往返时延、自适应路由，是 Prometheus 这类吉瓦级集群的基石</td></tr>
+          <tr><td><b>规模</b></td><td>演进为双级、无阻塞，最高 18,432 个 XPU</td><td>三层（RTSW/FTSW/STSW）+ ECMP；L2→BAG 典型过度订阅约 4.5:1</td></tr>
+          <tr><td><b>端点</b></td><td>面向 XPU/NIC 的基于以太网的 RoCE，含 Meta 的 MTIA</td><td>GB300 等加速器上的 400G/800G 以太网 NIC</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="dsfstack">
+      <div class="card"><h4>DSF — 解耦调度 Fabric</h4><ul class="clean">
+        <li><b>机制：</b>基于 VOQ（虚拟输出队列）的调度，由开放的 OCP-SAI + FBOSS 驱动。</li>
+        <li><b>适用场景：</b>跨整栋建筑的 Scale-out 互联；完整 DSF L2 区约 1.8 万块 800G GPU。</li>
+        <li><b>规模：</b>演进为双级、无阻塞，最高 18,432 个 XPU。</li>
+        <li><b>端点：</b>面向 XPU/NIC 的基于以太网的 RoCE，含 Meta 的 MTIA。</li>
+      </ul></div>
+      <div class="card"><h4>NSF — 非调度 Fabric</h4><ul class="clean">
+        <li><b>机制：</b>浅缓冲、解耦的以太网交换机。</li>
+        <li><b>适用场景：</b>低往返时延、自适应路由，是 Prometheus 这类吉瓦级集群的基石。</li>
+        <li><b>规模：</b>三层（RTSW/FTSW/STSW）+ ECMP；L2→BAG 典型过度订阅约 4.5:1。</li>
+        <li><b>端点：</b>GB300 等加速器上的 400G/800G 以太网 NIC。</li>
+      </ul></div>
+    </div>
+
+    <h3 class="subh">BAG：把区域连成吉瓦级集群</h3>
+    <p>一整栋楼也不够。<b>后端聚合（BAG）</b>是一张集中的以太网"超级 Spine"，把 DSF 与 NSF Fabric 跨楼栋、跨区域缝合起来——从而催生巨型集群。在 <b>Prometheus</b>——Meta 横跨 5 栋以上楼栋（外加防风雨帐篷与托管设施）、含数万块 GPU 的 1 吉瓦 AI 集群中，BAG 以<b>拍比特级</b>容量（每对区域 16–48 Pbps）互联区域 Fabric。</p>
+    <ul class="clean">
+      <li><b>硬件：</b>带 <span class="mono">Jericho3</span> 线卡的模块化机框（最高 432×800G 端口）；深缓冲以在长距离 inter-BAG 线缆上支持无损拥塞控制（PFC）。</li>
+      <li><b>路由：</b>带链路带宽属性的 eBGP 与不等价多路径（UCMP）；MACsec 保护 BAG 到 BAG 链路。</li>
+      <li><b>拓扑：</b>区域间可用平面式（一一对应、更简单）或散布式（链路分散、更抗故障）连接。</li>
+      <li><b>韧性：</b>在 BAG、数据大厅与配电层面分析故障域；通过排空受影响 BAG 平面与条件路由聚合避免黑洞。</li>
+    </ul>
+
+    <div class="digest">
+      <div class="dig"><b>51.2 Tbps</b><span>新一代 51T OCP 交换机：Minipack3（Tomahawk5）、Cisco 8501、Minipack3N（Spectrum-4）</span></div>
+      <div class="dig teal"><b>18,432</b><span>每个无阻塞双级 DSF 区中的 XPU 数</span></div>
+      <div class="dig"><b>16–48 Pbps</b><span>每对区域的 BAG 到 BAG 容量</span></div>
+      <div class="dig teal"><b>ESUN</b><span>Meta 牵头的 OCP 计划，把以太网用于 Scale-up 网络</span></div>
+    </div>
+
+    <div class="note">
+      <b class="lbl">天生开放</b>
+      51T 平台在 OCP-SAI 上运行 FBOSS；光模块覆盖 2×400G FR4（3 km）、2×400G FR4-LITE（500 m）与 400G/2×400G DR4。2026 年 Meta 还发布了 <b>MetaRoCE</b>——为 AI 级以太网打造的从零设计的 RDMA 传输，规范、参考实现与一致性套件均贡献给 OCP。
+    </div>
+  </section>
+
+  <!-- ============ 第 7 章：存储与软件 ============ -->
+  <section class="block" id="storage">
+    <h2 class="sec">存储与软件：技术栈的其余部分</h2>
+    <p class="lede">数据中心不只是交换机和 GPU。存储与控制面，正是 AI"对数据如饥似渴"的本性与 Meta 软件优先文化交汇之处。</p>
+
+    <h3 class="subh">存储："如果 AI 是大脑，存储就是记忆"</h3>
+    <p>在一个名为 <b>Tectonic</b> 的可横向扩展块层之下，Meta 运行着<b>数百个 EB 级存储集群</b>。对 AI 而言，旧的元数据繁重的 BLOB 栈（全局查找可能耗时数百毫秒）成为瓶颈——一次慢的存储取数就会拖停同步训练步骤中的每一块 GPU。</p>
+    <ul class="clean">
+      <li><b>统一元数据模式：</b>由 ZippyDB 支撑，把多层查找折叠为 O(1) 路径解析。</li>
+      <li><b>去掉数据面代理：</b>厚重的客户端 SDK 直接从存储服务器把字节流式送到 GPU，降低时延与功耗。</li>
+      <li><b>区域化部署：</b>精简的 BLOB 存储与每个 AI 区域的 GPU 同地部署——因为花在存储上的每一瓦电，都是没花在 GPU 上的电。</li>
+      <li>训练时，基于 Tectonic（为闪存优化）的自研 FUSE API，叠加协同开发的 <b>Hammerspace</b> 并行 NFS，让数千块 GPU 同步检查点、并支持交互式调试。</li>
+    </ul>
+
+    <h3 class="subh">把它们粘合起来的软件</h3>
+    <div class="gloss">
+      <div class="gterm"><b>FBOSS</b><span>Meta 的网络操作系统——一个镜像贯穿所有代际交换机，构建于 OCP-SAI 之上。</span></div>
+      <div class="gterm"><b>Twine / MAST</b><span>集群管理；演进为可在分布式数据中心之间调度长距离训练。</span></div>
+      <div class="gterm"><b>PyTorch / Triton</b><span>开放的 ML 软件，屏蔽 AMD、NVIDIA 与 MTIA 之间的硬件差异。</span></div>
+      <div class="gterm"><b>Tectonic / BLOB</b><span>区域性多租户存储 Fabric，具备纠删码、介质分层与面向 AI 的闪存优化路径。</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 第 8 章：贯穿主线 ============ -->
+  <section class="block" id="throughline">
+    <h2 class="sec">那条贯穿始终的主线</h2>
+    <p class="lede">忽略那些缩写，你会发现同样的五步棋不断重演——这正是 Meta 的做法在十五年里一眼可辨的原因。</p>
+    <div class="prin">
+      <div class="p"><div class="n">→</div><h4>解耦</h4><p>2014 年的 Pod 与 Plane；2019 年的单芯片 Minipack；AI 时代的 DSF/NSF + BAG。</p></div>
+      <div class="p"><div class="n">→</div><h4>开放</h4><p>OCP 联合创始人；每一个重大设计都贡献出去；开放的芯片与软件标准。</p></div>
+      <div class="p"><div class="n">→</div><h4>自动化</h4><p>fabric 级配置、设备自发现、自动修复、"像管理服务器一样"。</p></div>
+      <div class="p"><div class="n">→</div><h4>尊重物理</h4><p>电力与光模块预算决定拓扑选择——用 100G 光模块替代买不到的 400G，液冷之前先风冷。</p></div>
+      <div class="p"><div class="n">→</div><h4>成熟技术、尽早部署</h4><p>优先选择经过验证的技术，尽早上线、留在生产、持续迭代。</p></div>
+    </div>
+  </section>
+
+  <!-- ============ 参考来源 ============ -->
+  <section class="block" id="refs">
+    <h2 class="sec">来源与延伸阅读</h2>
+    <p class="lede">本教程基于 Meta 官方工程博文构建。你让我读的两篇以圆点标记。</p>
+    <ul class="refs">
+      <li><span class="y"><span class="keydot"></span>2014</span><a href="https://engineering.fb.com/2014/11/14/production-engineering/introducing-data-center-fabric-the-next-generation-facebook-data-center-network/">Introducing data center fabric, the next-generation Facebook data center network</a></li>
+      <li><span class="y"><span class="keydot"></span>2019</span><a href="https://engineering.fb.com/2019/03/14/data-center-engineering/f16-minipack/">Reinventing Facebook's data center network (F16 &amp; Minipack)</a></li>
+      <li><span class="y">2022</span><a href="https://engineering.fb.com/2024/03/12/data-center-engineering/building-metas-genai-infrastructure/">Building Meta's GenAI Infrastructure (24k GPU clusters)</a></li>
+      <li><span class="y">2024</span><a href="https://engineering.fb.com/2024/06/12/data-infrastructure/training-large-language-models-at-scale-meta/">How Meta trains large language models at scale</a></li>
+      <li><span class="y">2024</span><a href="https://engineering.fb.com/2024/08/05/data-center-engineering/roce-network-distributed-ai-training-at-scale/">RoCE networks for distributed AI training at scale</a></li>
+      <li><span class="y">2024</span><a href="https://engineering.fb.com/2024/10/15/data-infrastructure/metas-open-ai-hardware-vision/">Meta's open AI hardware vision (Catalina, Grand Teton)</a></li>
+      <li><span class="y">2025</span><a href="https://engineering.fb.com/2025/09/29/data-infrastructure/metas-infrastructure-evolution-and-the-advent-of-ai/">Meta's Infrastructure Evolution and the Advent of AI</a></li>
+      <li><span class="y">2025</span><a href="https://engineering.fb.com/2025/10/13/data-infrastructure/ocp-summit-2025-the-open-future-of-networking-hardware-for-ai/">OCP Summit 2025: The Open Future of Networking Hardware for AI</a></li>
+      <li><span class="y">2026</span><a href="https://engineering.fb.com/2026/02/09/data-center-engineering/building-prometheus-how-backend-aggregation-enables-gigawatt-scale-ai-clusters/">Building Prometheus: Backend Aggregation for Gigawatt-Scale AI Clusters</a></li>
+      <li><span class="y">2026</span><a href="https://engineering.fb.com/2026/07/01/data-infrastructure/metas-ai-storage-blueprint-at-scale/">Meta's AI Storage Blueprint at Scale</a></li>
+      <li><span class="y">2026</span><a href="https://engineering.fb.com/2026/08/24/networking-traffic/metaroce-rdma-transport-ai-ethernet/">MetaRoCE: A New RDMA Transport Built for AI-Scale Ethernet</a></li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>基于 Meta 工程团队公开博文综合整理 · 图示为说明性示意图，非实物图纸</span>
+    <span class="mono">2014 → 2026</span>
+  </div>
+</footer>
+
+<script>
+// ---------- 滚动进度 + 导航高亮 ----------
+const prog=document.getElementById('prog');
+const secs=[...document.querySelectorAll('section.block')];
+const links=[...document.querySelectorAll('.chips a')];
+function onScroll(){
+  const h=document.documentElement.scrollHeight-innerHeight;
+  prog.style.width=(h>0?(scrollY/h*100):0)+'%';
+  let cur=secs[0];
+  secs.forEach(s=>{if(s.getBoundingClientRect().top<=90)cur=s});
+  links.forEach(l=>l.classList.toggle('act', l.getAttribute('href')==='#'+cur.id));
+}
+addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+// ---------- 图表（隐藏 tab 面板惰性初始化） ----------
+const FONT='Space Grotesk, "Noto Sans SC", sans-serif';
+const INK='#0e1c2a',BLUE='#0a66e1',TEAL='#0fa3a3',AMBER='#e8a33d',GRID='#e3e8ef';
+const CHARTS={}, OPTIONS={};
+
+function base(extra){
+  return Object.assign({
+    textStyle:{fontFamily:FONT,color:INK},
+    grid:{left:8,right:16,top:30,bottom:6,containLabel:true},
+    tooltip:{trigger:'axis'},
+    backgroundColor:'transparent'
+  },extra);
+}
+function initChart(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  if(CHARTS[id]){ CHARTS[id].resize(); return; }
+  if(!window.echarts) return;
+  const c=echarts.init(el,null,{renderer:'canvas'});
+  c.setOption(OPTIONS[id]); CHARTS[id]=c; el.dataset.inited='1';
+  addEventListener('resize',()=>{ if(CHARTS[id]) CHARTS[id].resize(); });
+}
+
+// F4 vs F16 对比
+const cats=['每 Pod fabric\nASIC 数','拓扑中芯片\n层级','Fabric 内跳数\n（最佳）','Fabric 内跳数\n（最差）','楼栋到楼栋\n跳数'];
+OPTIONS.chartA=base({
+  xAxis:{type:'category',data:cats,axisLine:{lineStyle:{color:GRID}},axisTick:{show:false},axisLabel:{fontSize:11,lineHeight:14}},
+  yAxis:{type:'value',splitLine:{lineStyle:{color:GRID}},axisLabel:{fontSize:11}},
+  series:[{name:'F4（多芯片 400G）',type:'bar',data:[48,9,6,12,24],itemStyle:{color:BLUE,borderRadius:[4,4,0,0]},barMaxWidth:30,label:{show:true,position:'top',fontWeight:600,fontSize:11}}]
+});
+OPTIONS.chartB=base({
+  xAxis:{type:'category',data:cats,axisLine:{lineStyle:{color:GRID}},axisTick:{show:false},axisLabel:{fontSize:11,lineHeight:14}},
+  yAxis:{type:'value',splitLine:{lineStyle:{color:GRID}},axisLabel:{fontSize:11}},
+  series:[{name:'F16（16× 单芯片 100G）',type:'bar',data:[16,4,6,6,8],itemStyle:{color:TEAL,borderRadius:[4,4,0,0]},barMaxWidth:30,label:{show:true,position:'top',fontWeight:600,fontSize:11}}]
+});
+// 集群规模跃迁
+OPTIONS.chartC=base({grid:{left:8,right:24,top:30,bottom:6,containLabel:true}});
+OPTIONS.chartC.xAxis={type:'category',data:['2020\n起步','2022\nRSC','2023\n24k H100','2025\n129k H100','2026\nPrometheus 吉瓦'],axisLine:{lineStyle:{color:GRID}},axisTick:{show:false},axisLabel:{fontSize:11,lineHeight:14}};
+OPTIONS.chartC.yAxis={type:'value',name:'GPU 数',nameTextStyle:{fontSize:11,color:'#5c6c7b'},splitLine:{lineStyle:{color:GRID}},axisLabel:{fontSize:11,formatter:v=>v>=1000?Math.round(v/1000)+'k':v}};
+OPTIONS.chartC.series=[{
+  name:'最大的单一训练集群',type:'line',data:[4096,16000,24576,129000,180000],
+  smooth:true,symbolSize:9,lineStyle:{width:3,color:BLUE},itemStyle:{color:BLUE},
+  areaStyle:{color:{type:'linear',x:0,y:0,x:2,y:0,colorStops:[{offset:0,color:'rgba(10,102,225,.28)'},{offset:1,color:'rgba(10,102,225,.02)'}]}},
+  markPoint:{data:[{type:'max',name:'129k'}],symbolSize:0,label:{formatter:'129k',fontWeight:700,color:AMBER,fontSize:12}}
+}];
+
+// ---------- tab 切换 ----------
+document.querySelectorAll('.tabs').forEach(group=>{
+  group.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      group.querySelectorAll('button').forEach(b=>b.classList.remove('act'));
+      btn.classList.add('act');
+      const t=btn.dataset.t;
+      group.parentElement.querySelectorAll(':scope > [data-tab]').forEach(el=>{
+        if(el.dataset.tab===t){
+          el.style.display='';
+          if(el.classList.contains('chart')){
+            if(el.dataset.inited!=='1') initChart(el.id); else CHARTS[el.id].resize();
+          }
+        }else{
+          el.style.display='none';
+        }
+      });
+    });
+  });
+});
+
+// ---------- 加载 echarts（jsDelivr，回退 cdnjs）后启动 ----------
+function start(){ initChart('chartA'); initChart('chartC'); }
+function fallback(){
+  document.querySelectorAll('.chart').forEach(el=>{
+    if(el.dataset.inited!=='1') el.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;text-align:center;color:#5c6c7b;font-size:14px;padding:0 16px">图表无法加载（网络离线）。关键数字见上方统计卡片。</div>';
+  });
+}
+function addScript(src,onload,onerror){
+  const s=document.createElement('script');s.src=src;
+  s.onload=onload;s.onerror=onerror;document.head.appendChild(s);
+}
+function loadCdnjs(){ addScript('https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js',
+  ()=>window.echarts?start():fallback(), fallback); }
+addScript('https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js',
+  ()=>window.echarts?start():loadCdnjs(), loadCdnjs);
+</script>
+</body>
+</html>

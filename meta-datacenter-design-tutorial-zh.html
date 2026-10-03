@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meta 如何设计其数据中心 — 教程</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #79c0ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --era1: #58a6ff;
+    --era2: #3fb950;
+    --era3: #d29922;
+    --era4: #f85149;
+    --era5: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+  }
+  header {
+    background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a2332 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 48px 24px 36px;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0 0 8px;
+    font-size: 2.2rem;
+    background: linear-gradient(90deg, #58a6ff, #79c0ff, #bc8cff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header .subtitle { color: var(--muted); font-size: 1.05rem; max-width: 760px; margin: 0 auto; }
+  header .meta { margin-top: 14px; font-size: 0.85rem; color: var(--muted); }
+  .container { max-width: 980px; margin: 0 auto; padding: 24px; }
+
+  nav.toc {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin: 24px 0 40px;
+  }
+  nav.toc h2 { margin: 0 0 10px; font-size: 1rem; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.06em; }
+  nav.toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+  nav.toc li { margin: 4px 0; font-size: 0.92rem; break-inside: avoid; }
+  nav.toc a { color: var(--text); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent2); text-decoration: underline; }
+  @media (max-width: 640px) { nav.toc ol { columns: 1; } }
+
+  section { margin-bottom: 48px; }
+  h2 {
+    font-size: 1.5rem;
+    border-left: 4px solid var(--accent);
+    padding-left: 12px;
+    margin: 0 0 16px;
+  }
+  h3 { font-size: 1.15rem; color: var(--accent2); margin: 28px 0 10px; }
+  h4 { font-size: 1rem; color: var(--text); margin: 18px 0 8px; }
+  p { margin: 10px 0; color: #c9d1d9; }
+  a { color: var(--accent); }
+  ul, ol { color: #c9d1d9; }
+  li { margin: 5px 0; }
+  strong { color: var(--text); }
+  code {
+    background: #1f2937;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88em;
+    color: #79c0ff;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin: 16px 0;
+  }
+  .callout {
+    border-left: 4px solid var(--orange);
+    background: #1c1a12;
+    border-radius: 0 10px 10px 0;
+    padding: 12px 18px;
+    margin: 16px 0;
+  }
+  .callout.info { border-color: var(--accent); background: #0f1c2e; }
+  .callout.good { border-color: var(--green); background: #0f1f14; }
+  .callout .label { font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px; }
+  .callout .label.orange { color: var(--orange); }
+  .callout .label.blue { color: var(--accent2); }
+  .callout .label.green { color: var(--green); }
+
+  .era-tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 10px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    color: #0d1117;
+  }
+  .era-1 { background: var(--era1); }
+  .era-2 { background: var(--era2); }
+  .era-3 { background: var(--era3); }
+  .era-4 { background: var(--era4); }
+  .era-5 { background: var(--era5); }
+
+  .diagram {
+    background: #0d1420;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 18px 0;
+    overflow-x: auto;
+  }
+  .diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+  .diagram .caption { text-align: center; font-size: 0.82rem; color: var(--muted); margin-top: 12px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: #1c2128; color: var(--accent2); }
+  tr:nth-child(even) { background: #161b22; }
+
+  .timeline { position: relative; margin: 20px 0 20px 20px; padding-left: 24px; border-left: 2px solid var(--border); }
+  .timeline .tl-item { position: relative; margin-bottom: 22px; }
+  .timeline .tl-item::before {
+    content: "";
+    position: absolute;
+    left: -31px;
+    top: 4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+  }
+  .timeline .tl-year { font-weight: 700; color: var(--accent2); font-size: 0.9rem; }
+  .timeline .tl-title { font-weight: 600; margin: 2px 0; }
+  .timeline .tl-desc { font-size: 0.9rem; color: var(--muted); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 40px;
+  }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Meta 如何设计其数据中心</h1>
+  <p class="subtitle">一篇关于 Meta 数据中心架构演进的教程 —— 从 2014 年的"数据中心交换矩阵（fabric）"，到 2019 年的 F16/Minipack，再到 2024–2025 年的 AI 时代基础设施。</p>
+  <p class="meta">内容编译自 Meta 工程博客 &nbsp;·&nbsp; 2025 年 10 月</p>
+</header>
+
+<div class="container">
+
+<nav class="toc">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#why">为什么要研究 Meta 的数据中心？</a></li>
+    <li><a href="#pre2014">2014 年之前：集群时代</a></li>
+    <li><a href="#fabric2014">2014：数据中心交换矩阵</a></li>
+    <li><a href="#bridge">2014–2018：FBOSS、Wedge 与 Fabric Aggregator</a></li>
+    <li><a href="#f16">2019：F16、Minipack 与 HGRID</a></li>
+    <li><a href="#ai-arrival">2020–2022：AI 的到来</a></li>
+    <li><a href="#genai2024">2024：Meta 的 GenAI 基础设施</a></li>
+    <li><a href="#roce2024">2024：大规模 RoCE 网络</a></li>
+    <li><a href="#ocp2024">2024：OCP —— DSF 与新硬件</a></li>
+    <li><a href="#scale2025">2025：吉瓦级 AI —— NSF、二级 DSF、ESUN</a></li>
+    <li><a href="#principles">关键设计原则</a></li>
+    <li><a href="#timeline">时间线总结</a></li>
+    <li><a href="#references">参考资料</a></li>
+  </ol>
+</nav>
+
+<!-- ============================ -->
+<section id="why">
+  <h2>1. 为什么要研究 Meta 的数据中心？</h2>
+  <p>Meta（前身为 Facebook）运营着地球上规模最大的数据中心集群之一，服务 <strong>34 亿以上用户</strong>。它的工程博客以罕见的开放程度著称：公司会公布网络拓扑、交换机硬件、光模块与软件的深度技术细节，并把大部分设计贡献给<strong>开放计算项目（OCP）</strong>。研究他们的架构，是学习"当现成方案走到尽头时如何扩展基础设施"的绝佳范本。</p>
+
+  <div class="callout info">
+    <span class="label blue">贯穿始终的主线</span>
+    Meta 每一次重大重新设计，都源于同一种张力：<strong>指数级增长的流量</strong>撞上<strong>硬性物理限制</strong>——供电、散热、光模块产能与端口密度。而解决方案几乎总是同一套配方：<strong>解耦（disaggregation）+ 统一化 + 软件控制</strong>。
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="pre2014">
+  <h2>2. 2014 年之前：集群时代</h2>
+  <p>Meta 最早的数据中心采用经典的分层设计：</p>
+  <ul>
+    <li>服务器按<strong>机架</strong>分组，每个机架配一台架顶（TOR）交换机。</li>
+    <li>机架再组成<strong>集群（cluster）</strong>——数百个机架汇聚到少数几台大型高端口密度"集群交换机"上（"四柱"架构，3+1 冗余）。</li>
+    <li>集群之间通过超额订阅（oversubscribed）的上联链路互联。</li>
+  </ul>
+  <p>这套架构一度有效，直到它失效为止。问题在于：</p>
+  <ul>
+    <li><strong>厂商锁定：</strong>最大的集群需要最大的专有框式交换机，只有一两家厂商能提供。</li>
+    <li><strong>故障爆炸半径大：</strong>一台框式设备故障可能拖垮数据中心的一大片区域。</li>
+    <li><strong>容量僵化：</strong>集群间带宽按设计就是超额订阅的，这假设大部分流量留在集群内部——而随着 Meta 的服务越来越分布式，这个假设越来越不成立。</li>
+    <li><strong>速率升级慢：</strong>高密度大盒子在采用下一代以太网速率上总是滞后。</li>
+  </ul>
+  <div class="callout">
+    <span class="label orange">关键洞察</span>
+    "集群"本质上是网络限制伪装成的架构。Meta 的应用靠分布式来扩展，而网络却在人为地束缚它们。
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="fabric2014">
+  <h2>3. 2014：数据中心交换矩阵（Data Center Fabric）</h2>
+  <span class="era-tag era-1">时代 1 · 解耦开始</span>
+  <p>2014 年 11 月，Facebook 公布了<strong>数据中心交换矩阵</strong>，首先部署在爱荷华州阿尔图纳（Altoona）数据中心。目标是：让<strong>整栋大楼</strong>成为一张高性能网络，而不是由超额订阅的集群组成的层级结构。</p>
+
+  <h3>3.1 基本构建块</h3>
+  <div class="two-col">
+    <div class="card">
+      <h4>Pod（服务器舱）</h4>
+      <p style="font-size:0.9rem;">新的网络"原子单元"。每个 pod = <strong>48 个服务器机架</strong>，尺寸永远一致，由 4 台<strong>矩阵交换机（fabric switch）</strong>提供服务。小到足以使用多家厂商都能提供的中型交换机。每台 TOR 有 4 × 40G 上联（为 10G 服务器机架提供 160G 带宽）。</p>
+    </div>
+    <div class="card">
+      <h4>Spine 平面</h4>
+      <p style="font-size:0.9rem;">四个相互独立的 spine 交换机"平面"，每个平面最多容纳 48 台 spine 交换机。每个 pod 中的每台矩阵交换机都连接到其所在平面内的每一台 spine → 大楼内所有 pod 之间实现统一的、无阻塞的连接。</p>
+    </div>
+  </div>
+  <div class="card">
+    <h4>边缘 Pod（Edge pod）</h4>
+    <p style="font-size:0.9rem;">数量灵活的边缘 pod 提供到大楼外的连接——每个可提供高达 7.68 Tbps 到骨干网和楼间矩阵的带宽。</p>
+  </div>
+
+  <div class="diagram">
+    <svg width="720" height="300" viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+      <g>
+        <rect x="20" y="240" width="60" height="22" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+        <text x="50" y="255" fill="#e6edf3" text-anchor="middle">机架 1</text>
+        <rect x="95" y="240" width="60" height="22" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+        <text x="125" y="255" fill="#e6edf3" text-anchor="middle">机架 2</text>
+        <rect x="170" y="240" width="60" height="22" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+        <text x="200" y="255" fill="#e6edf3" text-anchor="middle">…</text>
+        <rect x="245" y="240" width="60" height="22" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+        <text x="275" y="255" fill="#e6edf3" text-anchor="middle">机架 48</text>
+      </g>
+      <text x="163" y="285" fill="#8b949e" text-anchor="middle">Pod（48 个机架）</text>
+      <g>
+        <rect x="40" y="170" width="50" height="18" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="65" y="183" fill="#e6edf3" text-anchor="middle">FSW1</text>
+        <rect x="105" y="170" width="50" height="18" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="130" y="183" fill="#e6edf3" text-anchor="middle">FSW2</text>
+        <rect x="170" y="170" width="50" height="18" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="195" y="183" fill="#e6edf3" text-anchor="middle">FSW3</text>
+        <rect x="235" y="170" width="50" height="18" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="260" y="183" fill="#e6edf3" text-anchor="middle">FSW4</text>
+      </g>
+      <g stroke="#30363d" stroke-width="1">
+        <line x1="50" y1="240" x2="65" y2="188"/>
+        <line x1="50" y1="240" x2="130" y2="188"/>
+        <line x1="50" y1="240" x2="195" y2="188"/>
+        <line x1="50" y1="240" x2="260" y2="188"/>
+        <line x1="275" y1="240" x2="65" y2="188"/>
+        <line x1="275" y1="240" x2="130" y2="188"/>
+        <line x1="275" y1="240" x2="195" y2="188"/>
+        <line x1="275" y1="240" x2="260" y2="188"/>
+      </g>
+      <g>
+        <rect x="380" y="30" width="70" height="18" rx="3" fill="#1f2937" stroke="#d29922"/>
+        <text x="415" y="43" fill="#e6edf3" text-anchor="middle">平面 1</text>
+        <rect x="380" y="80" width="70" height="18" rx="3" fill="#1f2937" stroke="#d29922"/>
+        <text x="415" y="93" fill="#e6edf3" text-anchor="middle">平面 2</text>
+        <rect x="380" y="130" width="70" height="18" rx="3" fill="#1f2937" stroke="#d29922"/>
+        <text x="415" y="143" fill="#e6edf3" text-anchor="middle">平面 3</text>
+        <rect x="380" y="180" width="70" height="18" rx="3" fill="#1f2937" stroke="#d29922"/>
+        <text x="415" y="193" fill="#e6edf3" text-anchor="middle">平面 4</text>
+      </g>
+      <text x="415" y="230" fill="#8b949e" text-anchor="middle">4 个 spine 平面</text>
+      <text x="415" y="245" fill="#8b949e" text-anchor="middle">（每平面 ≤48 台）</text>
+      <g stroke="#30363d" stroke-width="1" stroke-dasharray="3,2">
+        <line x1="65" y1="170" x2="380" y2="39"/>
+        <line x1="130" y1="170" x2="380" y2="89"/>
+        <line x1="195" y1="170" x2="380" y2="139"/>
+        <line x1="260" y1="170" x2="380" y2="189"/>
+      </g>
+      <g>
+        <rect x="540" y="80" width="80" height="18" rx="3" fill="#1f2937" stroke="#bc8cff"/>
+        <text x="580" y="93" fill="#e6edf3" text-anchor="middle">边缘 Pod</text>
+        <rect x="540" y="130" width="80" height="18" rx="3" fill="#1f2937" stroke="#bc8cff"/>
+        <text x="580" y="143" fill="#e6edf3" text-anchor="middle">骨干网</text>
+      </g>
+      <g stroke="#30363d" stroke-width="1" stroke-dasharray="3,2">
+        <line x1="450" y1="89" x2="540" y2="89"/>
+        <line x1="450" y1="139" x2="540" y2="139"/>
+      </g>
+      <g>
+        <rect x="20" y="40" width="60" height="18" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+        <text x="50" y="53" fill="#e6edf3" text-anchor="middle">Pod 2</text>
+        <rect x="95" y="40" width="60" height="18" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+        <text x="125" y="53" fill="#e6edf3" text-anchor="middle">Pod 3</text>
+        <rect x="170" y="40" width="60" height="18" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+        <text x="200" y="53" fill="#e6edf3" text-anchor="middle">Pod N</text>
+      </g>
+      <g stroke="#30363d" stroke-width="1" stroke-dasharray="3,2">
+        <line x1="50" y1="58" x2="380" y2="39"/>
+        <line x1="125" y1="58" x2="380" y2="89"/>
+        <line x1="200" y1="58" x2="380" y2="139"/>
+      </g>
+    </svg>
+    <div class="caption">图 1 —— 2014 年交换矩阵：相同的 pod 通过 4 个独立的 spine 平面互联；边缘 pod 连接骨干网。</div>
+  </div>
+
+  <h3>3.2 关键设计决策</h3>
+  <table>
+    <tr><th>决策</th><th>Meta 的做法</th><th>为什么重要</th></tr>
+    <tr>
+      <td><strong>路由协议</strong></td>
+      <td>只用最简功能集的标准 BGP4；集中式 BGP 控制器可以覆盖任意路由路径。</td>
+      <td>"分布式控制，集中式覆盖"——简单、可扩展、厂商中立。</td>
+    </tr>
+    <tr>
+      <td><strong>全网三层</strong></td>
+      <td>从 TOR 上联到边缘全部运行在三层；原生双栈 IPv4/IPv6。</td>
+      <td>没有生成树、没有二层域；商用芯片（merchant silicon）即可胜任。</td>
+    </tr>
+    <tr>
+      <td><strong>负载均衡</strong></td>
+      <td>基于流哈希的 ECMP；交换机之间 40G 链路，服务器 10G 链路。</td>
+      <td>统计上接近理想的流量分布；"大象流"无法独占链路。</td>
+    </tr>
+    <tr>
+      <td><strong>渐进式扩展</strong></td>
+      <td>预先建好物埋"骨架"；起步时按 4:1 超额订阅、每平面只部署 12 台 spine，之后加 spine 即可升到 1:1 无阻塞。</td>
+      <td>扩容只需加交换机，不需要重新设计。</td>
+    </tr>
+    <tr>
+      <td><strong>物理布局</strong></td>
+      <td>大楼围绕网络矩阵来设计：BDF 机房位于大楼中心，光纤干线为相同的"直线"走线，每个 spine 平面是一个故障域。</td>
+      <td>网络需求反过来优化了楼宇设计；开通时间大幅缩短。</td>
+    </tr>
+    <tr>
+      <td><strong>自动化</strong></td>
+      <td>自上而下、以矩阵为单位进行配置；硬件与工具链解耦。</td>
+      <td>替换任何组件都无需改动软件。</td>
+    </tr>
+  </table>
+
+  <div class="callout good">
+    <span class="label green">要点</span>
+    2014 年的交换矩阵用<strong>大量小而相同的单元</strong>取代了"大型机"。统一性 → 可编程性 → 自动化。这是之后一切演进的哲学基础。
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="bridge">
+  <h2>4. 2014–2018：FBOSS、Wedge 与 Fabric Aggregator</h2>
+  <span class="era-tag era-2">时代 2 · 自研整个栈</span>
+  <p>在 2014 年矩阵和 2019 年重设计之间，Meta 构建了自己的硬件与软件栈：</p>
+  <ul>
+    <li><strong>Wedge</strong>（2014）与 <strong>Wedge 100 / 100S</strong>——Meta 自研的架顶交换机。</li>
+    <li><strong>FBOSS</strong>——Meta 自研的网络操作系统，用单一软件镜像支撑多种硬件平台。后来开源，并在 AI 时代扮演核心角色。</li>
+    <li><strong>Backpack</strong>（2016）——第二代模块化开放交换机，基于 12 颗 ASIC 的折叠 Clos 框式设备，提供 128×100G。</li>
+    <li><strong>Fabric Aggregator</strong>（2018）——一种解耦的汇聚层，用于互联一个区域内的多栋数据中心大楼，取代矩阵之间的全互联（full-mesh）。由 Wedge 100S 构建块组成。</li>
+    <li><strong>Express Backbone</strong>——连接各大区域的长途骨干网。</li>
+  </ul>
+  <p>到 2019 年，这张网络服务着 26 亿用户，遍布 15 个地区。但需求持续翻倍，两个硬约束浮现：<strong>供电</strong>（各区域已有 100+ MW 的供电设施，而 400G 光模块/ASIC 功耗要高得多）和<strong>光模块产能</strong>（400G 光模块尚无法以 Meta 所需的规模供货）。</p>
+</section>
+
+<!-- ============================ -->
+<section id="f16">
+  <h2>5. 2019：F16、Minipack 与 HGRID</h2>
+  <span class="era-tag era-3">时代 3 · 100G 的极致规模</span>
+  <p>2019 年 3 月的文章《Reinventing Facebook's data center network》宣布了一次自上而下的重设计，包含三大支柱：<strong>F16</strong>（矩阵拓扑）、<strong>Minipack</strong>（构建块交换机）和 <strong>HGRID</strong>（区域汇聚）。</p>
+
+  <h3>5.1 F16 要解决的问题</h3>
+  <ul>
+    <li>机架需要 <strong>1.6 Tbps</strong> 甚至更高的机架间带宽。</li>
+    <li>区域正从 3 栋楼扩展到 <strong>6 栋楼</strong>——旧的 Fabric Aggregator 方案无法扩展到这个规模。</li>
+    <li>400G 光模块尚无足够产能，且 400G ASIC 会超出供电预算。</li>
+  </ul>
+
+  <h3>5.2 F16 拓扑</h3>
+  <p>巧妙之处在于：Broadcom Tomahawk 3 这颗 ASIC 既能做 32×400G <em>也能</em>做 128×100G，Meta 选择用它的 <strong>128×100G</strong> 模式，构建 <strong>16 个单芯片平面</strong>，而不是 4 个多芯片平面。</p>
+  <div class="card">
+    <ul style="margin:0;">
+      <li>每个机架连接 <strong>16 个独立平面</strong> → 上行 1.6T / 下行 1.6T。</li>
+      <li>每个 pod 使用 16 台 128 端口 100G 矩阵交换机（原来是 48 台多芯片交换机）→ <strong>交换芯片数量减少 3 倍</strong>。</li>
+      <li>使用成熟、久经验证的 <strong>100G CWDM4-OCP 光模块</strong>——不依赖尚处于前沿的 400G。</li>
+      <li>网络<strong>扁平化程度提高 2.25 倍</strong>：同矩阵内路径恒为 6 跳（原来 6–12 跳），楼间路径恒为 8 跳（原来最多 24 跳）。</li>
+    </ul>
+  </div>
+
+  <div class="diagram">
+    <svg width="720" height="260" viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+      <rect x="20" y="200" width="80" height="24" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+      <text x="60" y="216" fill="#e6edf3" text-anchor="middle">服务器机架</text>
+      <text x="60" y="240" fill="#8b949e" text-anchor="middle">Wedge 100S TOR</text>
+      <g>
+        <rect x="180" y="20" width="90" height="16" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="225" y="32" fill="#e6edf3" text-anchor="middle">平面 1</text>
+        <rect x="180" y="44" width="90" height="16" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="225" y="56" fill="#e6edf3" text-anchor="middle">平面 2</text>
+        <rect x="180" y="68" width="90" height="16" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="225" y="80" fill="#e6edf3" text-anchor="middle">平面 3</text>
+        <rect x="180" y="92" width="90" height="16" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="225" y="104" fill="#e6edf3" text-anchor="middle">…</text>
+        <rect x="180" y="116" width="90" height="16" rx="3" fill="#1f2937" stroke="#3fb950"/>
+        <text x="225" y="128" fill="#e6edf3" text-anchor="middle">平面 16</text>
+      </g>
+      <text x="225" y="155" fill="#8b949e" text-anchor="middle">16 台 128 端口 100G</text>
+      <text x="225" y="170" fill="#8b949e" text-anchor="middle">Minipack 矩阵交换机</text>
+      <g stroke="#30363d" stroke-width="1">
+        <line x1="60" y1="200" x2="180" y2="28"/>
+        <line x1="60" y1="200" x2="180" y2="52"/>
+        <line x1="60" y1="200" x2="180" y2="76"/>
+        <line x1="60" y1="200" x2="180" y2="124"/>
+      </g>
+      <rect x="330" y="60" width="90" height="30" rx="3" fill="#1f2937" stroke="#d29922"/>
+      <text x="375" y="79" fill="#e6edf3" text-anchor="middle">HGRID</text>
+      <text x="375" y="110" fill="#8b949e" text-anchor="middle">基于 Minipack</text>
+      <text x="375" y="124" fill="#8b949e" text-anchor="middle">的汇聚层</text>
+      <g stroke="#30363d" stroke-width="1" stroke-dasharray="3,2">
+        <line x1="270" y1="28" x2="330" y2="68"/>
+        <line x1="270" y1="52" x2="330" y2="75"/>
+        <line x1="270" y1="124" x2="330" y2="82"/>
+      </g>
+      <g>
+        <rect x="480" y="20" width="90" height="20" rx="3" fill="#1f2937" stroke="#bc8cff"/>
+        <text x="525" y="34" fill="#e6edf3" text-anchor="middle">大楼 2</text>
+        <rect x="480" y="60" width="90" height="20" rx="3" fill="#1f2937" stroke="#bc8cff"/>
+        <text x="525" y="74" fill="#e6edf3" text-anchor="middle">大楼 3</text>
+        <rect x="480" y="100" width="90" height="20" rx="3" fill="#1f2937" stroke="#bc8cff"/>
+        <text x="525" y="114" fill="#e6edf3" text-anchor="middle">…</text>
+        <rect x="480" y="140" width="90" height="20" rx="3" fill="#1f2937" stroke="#bc8cff"/>
+        <text x="525" y="154" fill="#e6edf3" text-anchor="middle">大楼 6</text>
+      </g>
+      <text x="525" y="185" fill="#8b949e" text-anchor="middle">每区域 6 栋楼</text>
+      <g stroke="#30363d" stroke-width="1" stroke-dasharray="3,2">
+        <line x1="420" y1="68" x2="480" y2="30"/>
+        <line x1="420" y1="75" x2="480" y2="70"/>
+        <line x1="420" y1="82" x2="480" y2="150"/>
+      </g>
+      <rect x="620" y="60" width="80" height="30" rx="3" fill="#1f2937" stroke="#f85149"/>
+      <text x="660" y="79" fill="#e6edf3" text-anchor="middle">骨干网</text>
+      <line x1="420" y1="75" x2="620" y2="75" stroke="#30363d" stroke-dasharray="3,2"/>
+    </svg>
+    <div class="caption">图 2 —— 2019 年 F16 + HGRID：楼内是 16 个平面的 Minipack 100G 矩阵交换机；HGRID 把一个区域内最多 6 栋楼缝合成一体。</div>
+  </div>
+
+  <h3>5.3 Minipack：通用构建块</h3>
+  <p>Minipack 是一台 <strong>128×100GE</strong> 交换机，围绕<em>单颗</em> 12.8T Tomahawk 3 ASIC 构建，取代了 Backpack 的 12 颗 ASIC 折叠 Clos 结构。关键特性：</p>
+  <table>
+    <tr><th>特性</th><th>说明</th></tr>
+    <tr><td><strong>功耗 / 体积</strong></td><td>比 Backpack 降低 50%</td></tr>
+    <tr><td><strong>模块化</strong></td><td>8 个可热插拔的端口接口模块（PIM），正交互连机箱——兼具盒式交换机的简洁与框式交换机的灵活性</td></tr>
+    <tr><td><strong>PIM-16Q</strong></td><td>16×100G QSFP28，或 8×200G QSFP56，或 16×40G QSFP+（向后兼容）</td></tr>
+    <tr><td><strong>PIM-4DD</strong></td><td>4×400G QSFP-DD；可与 PIM-16Q 在同一机箱内混插</td></tr>
+    <tr><td><strong>反向齿轮箱芯片</strong></td><td>把 TH3 的 50G PAM4 SerDes 通道转接到 100G CWDM4 的 25G NRZ 光模块</td></tr>
+    <tr><td><strong>多角色</strong></td><td>同一台设备可充当矩阵交换机、spine 和汇聚交换机</td></tr>
+  </table>
+  <p>Meta 把 Minipack（与 Edgecore 合作制造）和联合开发的 Arista 7368X4 都贡献给了 OCP；两者都运行 FBOSS。</p>
+
+  <h3>5.4 HGRID：扩展区域</h3>
+  <p>HGRID 以 Minipack 为构建块演进自 Fabric Aggregator，可互联最多 6 栋装备 F16 矩阵的大楼。F16 还取消了旧的"边缘 pod"——矩阵 spine 交换机直接连接 HGRID——进一步扁平化了东西向流量路径，并把区域上联带宽提升到 Pb 级。</p>
+
+  <div class="callout good">
+    <span class="label green">要点</span>
+    F16 体现了一种成熟的工程判断力：与其过早追逐 400G/800G 光模块，不如用<strong>成熟的 100G 光模块 + 更高的并行度（16 个平面）</strong>获得同样的 4 倍容量，同时还降低了功耗和跳数。为你真正能大规模买到的光模块而设计。
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="ai-arrival">
+  <h2>6. 2020–2022：AI 的到来</h2>
+  <span class="era-tag era-4">时代 4 · 新负载改变一切</span>
+  <p>AI 并非作为某个单一项目降临——它是在 2010 年代末随着<strong>短视频推荐</strong>悄悄渗入的。为 Reels 做内容排序，需要理解每一个上传的视频，并为每个用户生成个性化排序——这个问题比给好友动态排序大了几个数量级。擅长向量/矩阵运算的 GPU 因此成为必需品。</p>
+  <p>Meta 的第一批 AI 集群互联了 <strong>4,000 块 GPU</strong>，用于训练排序和推荐模型。公司很快意识到，AI 基础设施必须在数据中心空间、散热、机械系统、硬件、网络、存储和软件之间进行整体规划。</p>
+
+  <h3>6.1 2022：大语言模型冲击</h3>
+  <p>大语言模型（LLM）在一夜之间改写了扩展规则：</p>
+  <ul>
+    <li>训练作业规模在几周内从 <strong>128 块 GPU → 2,000 → 4,000</strong>。</li>
+    <li>数千块 GPU 第一次需要<strong>同步</strong>运行；任何一块拖后腿的 GPU 都会拖住整个作业。</li>
+    <li>与 Web 请求不同，你无法简单地在另一台机器上重试——整个集群运行的是同一个作业。故障处理成了生死攸关的问题；通过与业界合作，Meta 把训练中断率降低了约 50 倍。</li>
+  </ul>
+
+  <div class="callout">
+    <span class="label orange">为什么 AI 打破了旧假设</span>
+    Web 服务层是大量微小、独立、可重试的请求——可以用软件掩盖故障。而 AI 训练集群是<strong>一台分布式超级计算机</strong>：高带宽、低延迟、紧密同步，整体速度取决于最慢的那块 GPU。网络不再是"管道设施"，而是计算机本身的一部分。
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="genai2024">
+  <h2>7. 2024：Meta 的 GenAI 基础设施</h2>
+  <span class="era-tag era-4">时代 4 · 2.4 万卡集群</span>
+  <p>2024 年 3 月，Meta 详细介绍了其主力 GenAI 集群设计：<strong>两个各有 24,576 块 NVIDIA H100 GPU 的集群</strong>，用于训练 Llama 3 及后续模型。该设计有意并行探索两种网络技术：</p>
+
+  <div class="two-col">
+    <div class="card">
+      <h4>集群 A —— RoCE</h4>
+      <p style="font-size:0.9rem;">基于融合以太网的 RDMA（RoCE），由 <strong>Arista 7800</strong> 加上 Meta 的 <strong>Wedge400</strong> 与 <strong>Minipack2</strong> OCP 机架交换机构建。端点速率 400 Gbps。</p>
+    </div>
+    <div class="card">
+      <h4>集群 B —— InfiniBand</h4>
+      <p style="font-size:0.9rem;"><strong>NVIDIA Quantum2 InfiniBand</strong> 交换矩阵，端点速率同样为 400 Gbps。</p>
+    </div>
+  </div>
+  <p>两个集群都成功训练了大型 GenAI 模型（包括在 RoCE 集群上训练 Llama 3），网络均未成为瓶颈，这让 Meta 得以在大规模场景下对两种互联技术进行正面对比。</p>
+
+  <h3>7.1 完整技术栈</h3>
+  <table>
+    <tr><th>层次</th><th>技术</th><th>说明</th></tr>
+    <tr><td><strong>计算</strong></td><td>Grand Teton GPU 平台</td><td>Meta 的开放 GPU 硬件平台（已贡献给 OCP）；在单一机箱内整合供电、控制、计算与交换接口</td></tr>
+    <tr><td><strong>机架 / 供电</strong></td><td>Open Rack</td><td>OCP 机架架构</td></tr>
+    <tr><td><strong>网络</strong></td><td>RoCE（Arista 7800 + Wedge400/Minipack2）与 NVIDIA Quantum2 InfiniBand</td><td>400G 端点；双方案用于大规模对比</td></tr>
+    <tr><td><strong>存储</strong></td><td>Tectonic（FUSE API，闪存优化）+ Hammerspace 并行 NFS</td><td>数千块 GPU 同步保存检查点；EB 级数据加载；采用 YV3 Sierra Point 服务器与 E1.S SSD</td></tr>
+    <tr><td><strong>软件</strong></td><td>PyTorch（Meta 是最大贡献者）、NCCL、内部调度器</td><td>拓扑感知调度；进程组初始化时间从数小时降到数分钟</td></tr>
+  </table>
+
+  <h3>7.2 性能经验</h3>
+  <ul>
+    <li>开箱即用的大集群 AllGather 带宽<strong>差且不稳定</strong>（只有理想值的 10–90%），而小集群可达 90% 以上。</li>
+    <li>修复手段：<strong>拓扑感知的作业调度</strong>（让流量尽量留在网络底层），以及<strong>与 NCCL 协同优化的网络路由策略</strong>。</li>
+    <li>在 2.4 万块 GPU 的规模上，可调试性是一等难题：Meta 构建了 "desync debug" 和分布式集合通信"飞行记录仪"，用来找出那块拖住整个作业的 GPU。</li>
+    <li>新技术：H100 上的 FP8 训练、数千个 rank 的检查点在数百毫秒内完成。</li>
+  </ul>
+
+  <div class="callout info">
+    <span class="label blue">路线图背景</span>
+    到 2024 年底，Meta 的目标是拥有 <strong>35 万块 H100 GPU</strong>，总算力相当于约 60 万块 H100。这两个 2.4 万卡集群只是模板。
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="roce2024">
+  <h2>8. 2024：大规模 RoCE 网络</h2>
+  <span class="era-tag era-4">时代 4 · 后端网络</span>
+  <p>2024 年 8 月的 SIGCOMM 论文/博客《RoCE networks for distributed AI training at scale》是关于 Meta 如何构建 AI 后端网络的权威描述。关键架构决策：</p>
+
+  <h3>8.1 前端 / 后端分离</h3>
+  <p>训练集群运行在<strong>两张物理上相互独立的网络</strong>上：</p>
+  <ul>
+    <li><strong>前端（FE）：</strong>数据摄取、检查点、日志——使用既有的 RSW→FSW 层级和存储仓库。</li>
+    <li><strong>后端（BE）：</strong>GPU 之间的训练矩阵——一张专门的、无阻塞、无损的 <strong>RoCEv2</strong> 网络（RDMA 封装在 UDP 报文中传输）。</li>
+  </ul>
+  <p>分离使后端网络可以独立于通用数据中心网络演进、运维和扩展。</p>
+
+  <h3>8.2 AI Zone 拓扑</h3>
+  <div class="card">
+    <ul style="margin:0;">
+      <li><strong>RTSW</strong>（机架训练交换机）：叶子节点；用铜质 DAC 线缆提供机架内的纵向扩展（scale-up）连接。</li>
+      <li><strong>CTSW</strong>（集群训练交换机）：带深缓冲的模块化 spine；通过 400G 单模光纤在各机架间横向扩展（scale-out）。</li>
+      <li><strong>ATSW</strong>（汇聚训练交换机）：连接同一栋楼内的多台 CTSW，把 RoCE 域扩展到单个 AI Zone 之外。</li>
+      <li>跨 AI Zone 链路<em>按设计是超额订阅的</em>；作业调度器通过求"最小割"来分配 rank，把跨 Zone 流量降到最低。</li>
+    </ul>
+  </div>
+
+  <div class="diagram">
+    <svg width="700" height="260" viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+      <g>
+        <rect x="20" y="200" width="40" height="16" rx="2" fill="#1f2937" stroke="#f85149"/>
+        <rect x="66" y="200" width="40" height="16" rx="2" fill="#1f2937" stroke="#f85149"/>
+        <rect x="112" y="200" width="40" height="16" rx="2" fill="#1f2937" stroke="#f85149"/>
+        <rect x="158" y="200" width="40" height="16" rx="2" fill="#1f2937" stroke="#f85149"/>
+      </g>
+      <text x="109" y="238" fill="#8b949e" text-anchor="middle">GPU（RDMA 网卡）</text>
+      <rect x="60" y="150" width="100" height="20" rx="3" fill="#1f2937" stroke="#58a6ff"/>
+      <text x="110" y="164" fill="#e6edf3" text-anchor="middle">RTSW（叶）</text>
+      <text x="110" y="186" fill="#8b949e" text-anchor="middle">铜缆 DAC</text>
+      <g stroke="#30363d" stroke-width="1">
+        <line x1="40" y1="200" x2="80" y2="170"/>
+        <line x1="86" y1="200" x2="100" y2="170"/>
+        <line x1="132" y1="200" x2="120" y2="170"/>
+        <line x1="178" y1="200" x2="140" y2="170"/>
+      </g>
+      <rect x="230" y="90" width="110" height="20" rx="3" fill="#1f2937" stroke="#3fb950"/>
+      <text x="285" y="104" fill="#e6edf3" text-anchor="middle">CTSW（脊）</text>
+      <text x="285" y="126" fill="#8b949e" text-anchor="middle">深缓冲模块化</text>
+      <line x1="110" y1="150" x2="285" y2="110" stroke="#30363d"/>
+      <rect x="10" y="60" width="350" height="185" rx="6" fill="none" stroke="#30363d" stroke-dasharray="4,3"/>
+      <text x="185" y="78" fill="#8b949e" text-anchor="middle">AI Zone（二级 Clos）</text>
+      <rect x="430" y="90" width="110" height="20" rx="3" fill="#1f2937" stroke="#d29922"/>
+      <text x="485" y="104" fill="#e6edf3" text-anchor="middle">ATSW</text>
+      <text x="485" y="126" fill="#8b949e" text-anchor="middle">跨楼汇聚</text>
+      <line x1="340" y1="100" x2="430" y2="100" stroke="#30363d" stroke-dasharray="3,2"/>
+      <rect x="580" y="60" width="100" height="120" rx="6" fill="none" stroke="#30363d" stroke-dasharray="4,3"/>
+      <text x="630" y="80" fill="#8b949e" text-anchor="middle">AI Zone 2</text>
+      <line x1="540" y1="100" x2="580" y2="100" stroke="#30363d" stroke-dasharray="3,2"/>
+      <rect x="430" y="180" width="250" height="60" rx="6" fill="#0f1c2e" stroke="#58a6ff"/>
+      <text x="555" y="200" fill="#79c0ff" text-anchor="middle" font-weight="bold">独立的前端（FE）网络</text>
+      <text x="555" y="218" fill="#8b949e" text-anchor="middle">RSW → FSW → 存储仓库</text>
+      <text x="555" y="232" fill="#8b949e" text-anchor="middle">数据摄取 · 检查点 · 日志</text>
+    </svg>
+    <div class="caption">图 3 —— RoCE 后端：GPU → RTSW → CTSW 构成一个 AI Zone；ATSW 连接多个 Zone。FE 网络独立承载存储与控制流量。</div>
+  </div>
+
+  <h3>8.3 为什么 AI 流量难处理</h3>
+  <table>
+    <tr><th>特征</th><th>影响</th></tr>
+    <tr><td><strong>熵低</strong></td><td>流的数量少且模式重复 → 标准 ECMP 哈希效果差</td></tr>
+    <tr><td><strong>突发性强</strong></td><td>毫秒级时间尺度上的"开-关"行为</td></tr>
+    <tr><td><strong>大象流</strong></td><td>每次突发的单条流都可以打满网卡线速</td></tr>
+  </table>
+
+  <h3>8.4 路由方案的演进</h3>
+  <ol>
+    <li><strong>基线 ECMP：</strong>由于流熵低，性能很差。</li>
+    <li><strong>路径固定（path pinning）</strong>（按目的 RTSW 下联"分片"选路）：当每个机架完整分配给同一作业时效果良好，但碎片化的作业放置 + 网络故障会导致最高 <strong>30% 的性能下降</strong>。临时对策是把 RTSW 上联带宽超配 2 倍——有效但昂贵。</li>
+    <li><strong>E-ECMP + 队列对（QP）扩展：</strong>NCCL 把集合通信流量分散到多个 QP；交换机利用 ASIC 的 UDF 能力对 RoCE 报文的目的 QP 字段做哈希。AllReduce 性能比基线 ECMP 提升最高达 <strong>40%</strong>。</li>
+  </ol>
+
+  <h3>8.5 拥塞控制</h3>
+  <ul>
+    <li>由于固件 bug 和 CNP 计数问题，DCQCN（传统 RoCE 拥塞控制算法）在 400G 部署中被<strong>关闭</strong>；Meta 仅靠 <strong>PFC</strong> 运行了一年多，性能稳定。</li>
+    <li><strong>接收方驱动的流量准入：</strong>NCCL 使用两级拷贝；发送方必须等到接收方的"允许发送"（CTS）报文后才能发起 RDMA 写。这天然限制了网络中的在途流量。</li>
+    <li>精心调优 NCCL 的通道数与缓冲区大小，并在交换机上为 CTS 报文设置高优先级队列。</li>
+  </ul>
+
+  <div class="callout good">
+    <span class="label green">要点</span>
+    对于 AI 训练，Meta 把网络、集合通信库（NCCL）和作业调度器当作<strong>一个协同设计的系统</strong>：调度器了解拓扑；网卡和交换机哈希了解集合通信流量；准入控制由接收方驱动。
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="ocp2024">
+  <h2>9. 2024：OCP —— DSF 与新硬件</h2>
+  <span class="era-tag era-5">时代 5 · 开放、解耦的 AI 交换矩阵</span>
+  <p>在 OCP 2024 全球峰会上，Meta 发布了下一代 AI 矩阵的构建块。</p>
+
+  <h3>9.1 DSF —— 解耦调度矩阵（Disaggregated Scheduled Fabric）</h3>
+  <p>DSF 用分布式的叶/脊盒子系统取代了整体式框式调度矩阵：</p>
+  <ul>
+    <li><strong>基于 VoQ 的流量调度</strong> → <em>主动</em>避免拥塞（而非被动发送拥塞信号再反应）。</li>
+    <li>运行在 <strong>OCP-SAI</strong> + <strong>FBOSS</strong> 之上；对端点（NVIDIA/AMD GPU、Meta 自研 MTIA 加速器）暴露标准的以太网 RoCE 接口。</li>
+    <li><strong>Arista 7700R4</strong> 系列：DSF 叶交换机（基于 Broadcom Jericho3-AI，18×800GE 主机端口，14.4 Tbps，16GB 缓冲）与 DSF 脊交换机（基于 Broadcom Ramon3，128×800G 矩阵端口，102.4 Tbps）。</li>
+  </ul>
+
+  <h3>9.2 新一代 51T 交换机</h3>
+  <table>
+    <tr><th>交换机</th><th>ASIC</th><th>容量</th><th>说明</th></tr>
+    <tr><td><strong>Minipack3</strong></td><td>Broadcom Tomahawk5</td><td>51.2 Tbps，64× OSFP</td><td>Meta 设计、Celestica 制造；无需重定时器（retimer）；运行 FBOSS</td></tr>
+    <tr><td><strong>Cisco 8501</strong></td><td>Cisco Silicon One G200</td><td>51.2 Tbps，64× OSFP</td><td>由 Cisco 设计制造；运行 FBOSS</td></tr>
+  </table>
+  <p>两者都向后兼容 200G/400G，并支持升级到 400G/800G——延续了初代 Minipack 的多角色、平滑升级哲学。</p>
+
+  <h3>9.3 光模块与网卡</h3>
+  <ul>
+    <li><strong>2×400G FR4 光模块</strong>已部署于后端、前端与 DSF 的 400G/800G 互联。</li>
+    <li><strong>FBNIC：</strong>Meta 首颗自研网卡 ASIC——多主机（最多 4 台主机）、符合 OCP NIC 3.0 规范、Linux 驱动已上游化、模组由 Marvell 设计。</li>
+  </ul>
+</section>
+
+<!-- ============================ -->
+<section id="scale2025">
+  <h2>10. 2025：吉瓦级 AI —— NSF、二级 DSF、ESUN</h2>
+  <span class="era-tag era-5">时代 5 · 整楼级乃至更大规模</span>
+
+  <h3>10.1 12.9 万块 GPU 的宣言</h3>
+  <p>在 2023 年底/2024 年，Meta 做了一件史无前例的事：<strong>腾空五栋生产中的数据中心大楼</strong>，把它们改造成<strong>一个拥有 129,000 块 H100 GPU 的单一 AI 集群</strong>——而且只用了几个月。之所以可能，正是因为 2014–2019 年奠定的"区域化、矩阵优先"设计哲学。</p>
+
+  <h3>10.2 OCP 2025 网络发布</h3>
+
+  <div class="card">
+    <h4>二级 DSF（Dual-Stage DSF）</h4>
+    <p style="font-size:0.9rem;">DSF 演进为二级架构，支持<strong>最多 18,432 个 xPU 的无阻塞矩阵</strong>——这是构建横跨整栋数据中心大楼、甚至横跨多个区域的 AI 集群的基本构建块。</p>
+  </div>
+
+  <div class="card">
+    <h4>NSF —— 非调度矩阵（Non-Scheduled Fabric）</h4>
+    <p style="font-size:0.9rem;">与 DSF 并行的全新架构，面向<em>最大规模</em>的集群（例如 Meta 首个吉瓦级 AI 超级集群 <strong>Prometheus</strong>）：</p>
+    <ul style="font-size:0.9rem;">
+      <li>完全由<strong>浅缓冲、解耦的以太网交换机</strong>构建</li>
+      <li>低往返时延</li>
+      <li><strong>自适应路由</strong>，实现负载均衡、避免拥塞</li>
+      <li>面向整楼级 AI 集群的三层拓扑</li>
+    </ul>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h4>Minipack3N</h4>
+      <p style="font-size:0.9rem;">基于 <strong>NVIDIA Spectrum-4</strong> 的新型 51.2 Tbps OCP 交换机，与 Minipack3 共用系统设计，由 Accton 制造，运行 OCP-SAI + FBOSS。进一步扩充了 Meta 的多厂商芯片组合。</p>
+    </div>
+    <div class="card">
+      <h4>新光模块</h4>
+      <p style="font-size:0.9rem;"><strong>2×400G FR4 LITE</strong>（500 米，面向楼内场景的成本优化型）以及用于 AI 主机侧网卡和交换机侧连接的 <strong>400G DR4 / 2×400G DR4</strong> OSFP 光模块。</p>
+    </div>
+  </div>
+
+  <h3>10.3 ESUN —— 面向纵向扩展网络的以太网</h3>
+  <p>Meta 是 <strong>ESUN</strong>（Ethernet for Scale-Up Networking）的创始成员，这是 OCP 网络项目下的一个新工作组，目标是把以太网引入<em>纵向扩展（scale-up）</em>领域（即 AI 加速器机架内部/旁边的超高带宽互联——历史上是专有技术，如 NVLink）。成员包括 AMD、Arista、ARM、Broadcom、Cisco、HPE、Marvell、Microsoft、NVIDIA、OpenAI、Oracle 等。重点领域：协议头、错误处理、无损多跳拓扑，并与 UEC、IEEE 等标准组织对齐。</p>
+
+  <h3>10.4 机架本身也在改变</h3>
+  <p>2025 年的《基础设施演进》一文展示了 Meta 基于 GB200 的 <strong>Catalina</strong> 机架：一个 6 机架的 pod 中，中间 2 个机架容纳 72 块 NVIDIA Blackwell GPU（约 140 kW），另外 4 个机架是<strong>风冷辅助液冷（AALC）</strong>设备——因为 Meta 的传统数据中心没有设施级液冷。这样一个 pod 可提供约 360 PFLOPS 的 FP16 算力，而功耗是普通 CPU pod 的 800 倍以上。数据中心设计、供电和散热，如今已与网络、计算设计密不可分。</p>
+
+  <div class="callout info">
+    <span class="label blue">未来走向</span>
+    轨迹很清晰：从楼级矩阵（2014）→ 区域级矩阵（2019）→ <strong>横跨多栋楼、多个区域的 AI 集群</strong>（2024–2025）；以太网（而非专有互联）是统一的技术主线；而供电与散热已成为主导约束。
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="principles">
+  <h2>11. 关键设计原则</h2>
+  <p>横跨 11 年、多个世代，一套一以贯之的哲学浮现出来：</p>
+  <table>
+    <tr><th>原则</th><th>Meta 的实践</th></tr>
+    <tr><td><strong>1. 一切皆可解耦</strong></td><td>用大量小而相同的单元取代大型专有框式设备：pod（2014）、单 ASIC 的 Minipack 平面（2019）、DSF 叶/脊（2024）。</td></tr>
+    <tr><td><strong>2. 统一性催生自动化</strong></td><td>相同的 pod/平面 → 自上而下、以矩阵为单位的配置；硬件与工具链各自独立演进。</td></tr>
+    <tr><td><strong>3. 大规模使用成熟技术</strong></td><td>F16 选择成熟的 100G CWDM4 光模块而非不成熟的 400G；容量来自并行度（16 个平面），而非最尖端的链路速率。</td></tr>
+    <tr><td><strong>4. 掌握软件栈</strong></td><td>FBOSS 用一个操作系统覆盖不同世代、不同厂商的硬件（Broadcom、Cisco、NVIDIA 芯片）；OCP-SAI 保持厂商中立。</td></tr>
+    <tr><td><strong>5. 网络、软件与负载协同设计</strong></td><td>拓扑感知调度器、NCCL + E-ECMP/QP 扩展、接收方驱动准入——网络是计算机的一部分。</td></tr>
+    <tr><td><strong>6. 为平滑升级而设计</strong></td><td>Minipack 可插拔 PIM（40/100/200/400G）、预建物理骨架、向后兼容的 51T 交换机。</td></tr>
+    <tr><td><strong>7. 关注点分离</strong></td><td>前端与后端网络分离；存储/检查点流量与 GPU 训练矩阵隔离。</td></tr>
+    <tr><td><strong>8. 默认开放</strong></td><td>设计贡献给 OCP；开放 SAI；FBOSS 开源；ESUN 推动以太网纵向扩展标准化。</td></tr>
+    <tr><td><strong>9. 供电与散热是一阶约束</strong></td><td>F16 由数据中心供电预算塑造；2025 年的机架需要 AALC 液冷；吉瓦级集群（Prometheus）围绕电力可得性来规划。</td></tr>
+  </table>
+</section>
+
+<!-- ============================ -->
+<section id="timeline">
+  <h2>12. 时间线总结</h2>
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-year">2014</div>
+      <div class="tl-title">数据中心交换矩阵（阿尔图纳）</div>
+      <div class="tl-desc">Pod + 4 个 spine 平面；纯 BGP；ECMP；解耦开始。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2014–2018</div>
+      <div class="tl-title">FBOSS、Wedge、Backpack、Fabric Aggregator</div>
+      <div class="tl-desc">Meta 自研交换机、网络操作系统与楼间汇聚层。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2019</div>
+      <div class="tl-title">F16 + Minipack + HGRID</div>
+      <div class="tl-desc">16 个 100G 单 ASIC 平面；每机架 1.6T；6 栋楼区域；交换机功耗降 50%。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2020–2022</div>
+      <div class="tl-title">首批 AI 集群；LLM 冲击</div>
+      <div class="tl-desc">4 千卡集群；训练作业从 128→2 千→4 千卡跃升；同步计算改写故障模型。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2024 Q1</div>
+      <div class="tl-title">GenAI 基础设施 —— 2 × 24,576 块 H100 集群</div>
+      <div class="tl-desc">RoCE（Arista 7800 + Wedge400/Minipack2）对阵 InfiniBand（Quantum2）；Grand Teton；Tectonic + Hammerspace；Llama 3。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2024 Q3</div>
+      <div class="tl-title">大规模 RoCE（SIGCOMM）</div>
+      <div class="tl-desc">前后端网络分离；AI Zone（RTSW/CTSW/ATSW）；E-ECMP + QP 扩展；接收方驱动准入。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2024 Q4</div>
+      <div class="tl-title">OCP：DSF、Minipack3、Cisco 8501、FBNIC</div>
+      <div class="tl-desc">解耦调度矩阵（VoQ，Jericho3-AI/Ramon3）；51T 交换机；Meta 首颗网卡 ASIC。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2023–2024</div>
+      <div class="tl-title">12.9 万块 H100 单一集群</div>
+      <div class="tl-desc">腾空五栋生产数据中心大楼，数月内重建为一个 AI 集群。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2025</div>
+      <div class="tl-title">吉瓦级 AI：二级 DSF、NSF、Minipack3N、ESUN、GB200/Catalina</div>
+      <div class="tl-desc">18,432 xPU 无阻塞 DSF；面向 Prometheus 的浅缓冲 NSF；NVIDIA Spectrum-4 加入 FBOSS 阵营；以太网进军纵向扩展；液冷 Blackwell pod。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ -->
+<section id="references">
+  <h2>13. 参考资料</h2>
+  <ol>
+    <li><a href="https://engineering.fb.com/2014/11/14/production-engineering/introducing-data-center-fabric-the-next-generation-facebook-data-center-network/">Introducing data center fabric, the next-generation Facebook data center network</a> — 2014 年 11 月</li>
+    <li><a href="https://engineering.fb.com/2019/03/14/data-center-engineering/f16-minipack/">Reinventing Facebook's data center network（F16、Minipack、HGRID）</a> — 2019 年 3 月</li>
+    <li><a href="https://engineering.fb.com/2024/03/12/data-center-engineering/Building-metas-genai-infrastructure/">Building Meta's GenAI Infrastructure</a> — 2024 年 3 月</li>
+    <li><a href="https://engineering.fb.com/2024/08/05/data-center-engineering/roce-network-distributed-ai-training-at-scale/">RoCE networks for distributed AI training at scale</a> — 2024 年 8 月</li>
+    <li><a href="https://engineering.fb.com/2024/10/15/data-infrastructure/open-future-networking-hardware-ai-ocp-2024-meta/">OCP Summit 2024: The open future of networking hardware for AI</a> — 2024 年 10 月</li>
+    <li><a href="https://engineering.fb.com/2025/09/29/data-infrastructure/metas-infrastructure-evolution-and-the-advent-of-ai/">Meta's Infrastructure Evolution and the Advent of AI</a> — 2025 年 9 月</li>
+    <li><a href="https://engineering.fb.com/2025/10/13/data-infrastructure/ocp-summit-2025-the-open-future-of-networking-hardware-for-ai/">OCP Summit 2025: The Open Future of Networking Hardware for AI</a> — 2025 年 10 月</li>
+  </ol>
+  <p style="font-size:0.85rem; color:var(--muted);">上述文章中引用的其他资料：AI Research SuperCluster（ai.meta.com）、Grand Teton（OCP 2022）、Fabric Aggregator（2018）、Express Backbone，以及 SIGCOMM 2024 论文《RDMA over Ethernet for Distributed AI Training at Meta Scale》。</p>
+</section>
+
+</div>
+
+<footer>
+  本教程编译自 Meta 工程博客（engineering.fb.com）公开文章 · 仅供学习使用
+</footer>
+
+</body>
+</html>

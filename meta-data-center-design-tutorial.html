@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How Meta Designs Its Data Center — From Fabric to the AI Era</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="%230A66E1"/><g stroke="%23fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 10h6M20 10h6"/><path d="M6 16h5M21 16h5"/><path d="M6 22h6M20 22h6"/><circle cx="16" cy="16" r="3.2" fill="%23fff" stroke="none"/></g></svg>'>
+<link rel="preconnect" href="https://miaoda.feishu.cn">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ink:#0e1c2a;
+  --ink-2:#16304a;
+  --paper:#f4f6f9;
+  --card:#ffffff;
+  --line:#dfe5ec;
+  --muted:#5c6c7b;
+  --blue:#0a66e1;
+  --blue-soft:#e6effc;
+  --teal:#0fa3a3;
+  --teal-soft:#e2f6f5;
+  --amber:#e8a33d;
+  --amber-soft:#fdf3e2;
+  --navy-panel:#0c2033;
+  --maxw:1120px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;color:var(--ink);background:var(--paper);
+  font-family:"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  line-height:1.7;font-size:16px;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:"Space Grotesk","Noto Sans",sans-serif;line-height:1.2;letter-spacing:-.01em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+/* progress + nav */
+#prog{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--blue),var(--teal));width:0;z-index:60}
+nav.top{position:sticky;top:0;z-index:50;background:rgba(244,246,249,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav.top .wrap{display:flex;align-items:center;gap:16px;height:54px}
+.brand{font-family:"Space Grotesk",sans-serif;font-weight:700;color:var(--ink);white-space:nowrap;display:flex;align-items:center;gap:8px}
+.brand svg{flex:none}
+.chips{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips a{font-family:"Space Grotesk",sans-serif;font-weight:500;font-size:13px;color:var(--muted);text-decoration:none;padding:6px 11px;border-radius:999px;white-space:nowrap;transition:.15s}
+.chips a:hover{color:var(--blue);background:var(--blue-soft)}
+.chips a.act{color:var(--blue);background:var(--blue-soft)}
+
+/* hero */
+header.hero{background:radial-gradient(1200px 500px at 80% -10%,#123a5e 0%,var(--navy-panel) 55%,#08131f 100%);color:#eaf2fa;padding:64px 0 40px;position:relative;overflow:hidden}
+header.hero .fg{position:relative;z-index:2}
+.kicker{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13px;letter-spacing:.16em;color:var(--teal);text-transform:uppercase}
+h1.title{font-size:clamp(30px,5vw,52px);font-weight:700;margin:14px 0 16px;max-width:19ch}
+.sub{font-size:clamp(15px,2vw,18px);color:#bcd0e4;max-width:64ch}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.tag{font-family:"Space Grotesk",sans-serif;font-size:12px;font-weight:600;border:1px solid #2b4a68;color:#cfe0f0;padding:5px 11px;border-radius:999px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:34px;position:relative;z-index:2}
+.stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px 18px}
+.stat b{font-family:"Space Grotesk",sans-serif;font-size:26px;font-weight:700;color:#fff;display:block;line-height:1.1}
+.stat span{font-size:12.5px;color:#a9c2da}
+.hero-art{position:absolute;right:-60px;top:50%;transform:translateY(-50%);width:44%;opacity:.5;pointer-events:none;z-index:1}
+@media(max-width:820px){.stats{grid-template-columns:repeat(2,1fr)}.hero-art{display:none}}
+
+/* sections */
+section.block{padding:56px 0 8px}
+h2.sec{font-size:clamp(24px,3.4vw,34px);font-weight:700;margin:0 0 6px}
+.lede{color:var(--muted);max-width:78ch;font-size:16.5px;margin:0 0 26px}
+h3.subh{font-size:21px;font-weight:600;margin:34px 0 10px}
+p{margin:12px 0}
+ul.clean{margin:10px 0;padding-left:22px}
+ul.clean li{margin:7px 0}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;margin:18px 0}
+.note{border-left:4px solid var(--blue);background:var(--blue-soft);border-radius:0 12px 12px 0;padding:14px 18px;margin:18px 0;font-size:15px}
+.note.teal{border-color:var(--teal);background:var(--teal-soft)}
+.note.amber{border-color:var(--amber);background:var(--amber-soft)}
+.note b.lbl{font-family:"Space Grotesk",sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);display:block;margin-bottom:4px}
+.note.teal b.lbl{color:#0b7f80}
+.note.amber b.lbl{color:#b97a1f}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}}
+
+/* principles */
+.prin{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:22px 0}
+.prin .p{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 14px}
+.prin .p .n{font-family:"Space Grotesk",sans-serif;font-weight:700;color:var(--blue);font-size:13px}
+.prin .p h4{margin:6px 0 6px;font-size:15px}
+.prin .p p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.55}
+@media(max-width:900px){.prin{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.prin{grid-template-columns:1fr}}
+
+/* figures */
+figure{margin:22px 0}
+figure img,figure svg{width:100%;height:auto;border-radius:12px;border:1px solid var(--line);display:block}
+figure figcaption{font-size:13px;color:var(--muted);margin-top:8px;text-align:center}
+.chartbox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px}
+.chartbox .cap{font-family:"Space Grotesk",sans-serif;font-size:13px;font-weight:600;padding:6px 10px 0}
+.chart{width:100%;height:360px}
+.chart.sm{height:300px}
+.digest{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0}
+.dig{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.dig b{font-family:"Space Grotesk",sans-serif;font-size:22px;color:var(--blue);display:block}
+.dig.teal b{color:var(--teal)}
+.dig span{font-size:12.5px;color:var(--muted)}
+
+/* tabs */
+.tabs{display:flex;gap:8px;margin:8px 0 4px;flex-wrap:wrap}
+.tabs button{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer;transition:.15s}
+.tabs button.act{color:var(--blue);background:var(--blue-soft);border-color:#c9dcf7}
+.tab-panel{display:none}
+.tab-panel.act{display:block}
+
+/* timeline */
+.tl{margin:26px 0}
+.tl-row{display:grid;grid-template-columns:112px 26px 1fr;gap:0 18px}
+.tl-year{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:15px;color:var(--blue);text-align:right;padding-top:2px}
+.tl-axis{position:relative}
+.tl-axis::before{content:"";position:absolute;top:0;bottom:0;left:calc(50% - 1px);width:2px;background:var(--line)}
+.tl-dot{width:12px;height:12px;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 2px var(--blue);position:absolute;top:6px;left:50%;transform:translateX(-50%);z-index:1}
+.tl-row.is-teal .tl-dot{background:var(--teal);box-shadow:0 0 0 2px var(--teal)}
+.tl-row.is-amber .tl-dot{background:var(--amber);box-shadow:0 0 0 2px var(--amber)}
+.tl-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:16px}
+.tl-card h4{margin:0 0 4px;font-size:16px}
+.tl-card p{margin:0;font-size:14px;color:var(--muted)}
+.tl-card .tl-sub{font-family:"Space Grotesk",sans-serif;font-size:12px;font-weight:600;color:var(--blue);display:block;margin-bottom:2px}
+@media(max-width:640px){.tl-row{grid-template-columns:1fr;gap:4px}.tl-year{text-align:left}.tl-axis{display:none}}
+
+/* tables */
+.tblwrap{overflow-x:auto;margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
+table .mono{font-size:13px}
+th,td{padding:11px 12px;text-align:left;vertical-align:top}
+th{background:#f0f4f9;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13px;color:var(--ink-2)}
+tr+tr{border-top:1px solid var(--line)}
+td.hi{color:var(--blue);font-weight:600}
+
+/* glossary / refs */
+.gloss{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:20px 0}
+.gterm{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 16px}
+.gterm b{font-family:"Space Grotesk",sans-serif;color:var(--ink-2)}
+.gterm span{font-size:13px;color:var(--muted);display:block;margin-top:2px}
+.refs{list-style:none;padding:0;margin:18px 0}
+.refs li{padding:9px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.refs li:last-child{border-bottom:none}
+.refs .y{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--muted);margin-right:10px;display:inline-block;min-width:52px}
+.keydot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);margin-right:7px;vertical-align:1px}
+.dsfstack{display:none}
+@media(max-width:760px){.dsfstack{display:block}.tblwrap.dsftable{display:none}}
+@media(max-width:640px){.stat span{font-size:13px}.prin .p p{font-size:14px}.tl-card p{font-size:14.5px}.dig span{font-size:13px}}
+
+footer{padding:44px 0 60px;color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);margin-top:40px}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Back to top">
+      <svg width="22" height="22" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0A66E1"/><g stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 10h6M20 10h6"/><path d="M6 16h5M21 16h5"/><path d="M6 22h6M20 22h6"/><circle cx="16" cy="16" r="3.2" fill="#fff" stroke="none"/></g></svg>
+      Meta DC · Tutorial
+    </a>
+    <div class="chips">
+      <a href="#philosophy">Philosophy</a>
+      <a href="#fabric">2014 Fabric</a>
+      <a href="#f16">2019 F16</a>
+      <a href="#ai-inflection">AI Inflection</a>
+      <a href="#ai-scale">AI Scale-up</a>
+      <a href="#ai-net">AI Networking</a>
+      <a href="#storage">Storage &amp; SW</a>
+      <a href="#throughline">Throughline</a>
+      <a href="#refs">References</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <svg class="hero-art" viewBox="0 0 600 400" aria-hidden="true">
+    <g stroke="#2b5f8f" stroke-width="1.4" opacity=".8">
+      <path d="M300 40 L120 180 L240 300 L420 180 Z" fill="none"/>
+      <path d="M300 40 L480 180 L420 300 L240 300 L120 180 Z" fill="none"/>
+      <path d="M120 180 L240 300 M480 180 L420 300 M240 300 L420 300" fill="none"/>
+    </g>
+    <g fill="#3f7fbb">
+      <circle cx="300" cy="40" r="6"/><circle cx="120" cy="180" r="6"/><circle cx="240" cy="300" r="6"/>
+      <circle cx="420" cy="180" r="6"/><circle cx="480" cy="180" r="6"/><circle cx="420" cy="300" r="6"/>
+    </g>
+  </svg>
+  <div class="wrap fg">
+    <div class="kicker">A Field Guide · Engineering at Meta</div>
+    <h1 class="title">How Meta Designs Its Data Center</h1>
+    <p class="sub">From the disaggregated network fabric of 2014, through the F16&nbsp;/&nbsp;Minipack reinvention in 2019, to the gigawatt-scale AI clusters and custom silicon of the present — a tutorial built from Meta's own engineering posts.</p>
+    <div class="meta-row">
+      <span class="tag">Network fabric</span>
+      <span class="tag">Open Compute Project</span>
+      <span class="tag">GPU clusters</span>
+      <span class="tag">Custom silicon</span>
+      <span class="tag">Power &amp; cooling</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>10×</b><span>Intra-building capacity from the 2014 fabric vs. its cluster predecessor</span></div>
+      <div class="stat"><b>1.6 Tbps</b><span>Per-rack bandwidth in the 2019 F16 design (up from 160 Gbps)</span></div>
+      <div class="stat"><b>129k</b><span>H100 GPUs in Meta's single largest cluster, built by emptying 5 data centers</span></div>
+      <div class="stat"><b>1 GW</b><span>Design capacity of the Prometheus AI cluster spanning many buildings</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ CHAPTER 0 : PHILOSOPHY ============ -->
+  <section class="block" id="philosophy">
+    <h2 class="sec">The design philosophy that never changes</h2>
+    <p class="lede">Meta's data center story is a story of <em>recurring ideas</em> reapplied as workloads changed from web traffic to AI training. Before the topologies, learn the five principles that connect every generation.</p>
+    <div class="prin">
+      <div class="p"><div class="n">01</div><h4>Disaggregate</h4><p>Break big, specialized devices into many small, identical building blocks that can be procured from multiple vendors.</p></div>
+      <div class="p"><div class="n">02</div><h4>Open everything</h4><p>Co-founded OCP in 2011; open hardware, FBOSS, and OCP-SAI let Meta (and everyone) buy commodity parts at scale.</p></div>
+      <div class="p"><div class="n">03</div><h4>Automate relentlessly</h4><p>"Manage switches like servers." A single software image, fabric-level config, auto-remediation instead of human debugging.</p></div>
+      <div class="p"><div class="n">04</div><h4>Design for power &amp; optics</h4><p>Physical constraints (power budgets, optics availability) are treated as first-class inputs to every architecture decision.</p></div>
+      <div class="p"><div class="n">05</div><h4>Keep it simple, @scale</h4><p>Choose mature tech now over bleeding-edge risk; favor fewer parts, fewer hops, fewer moving pieces — even at enormous scale.</p></div>
+    </div>
+    <div class="note">
+      <b class="lbl">Why this matters</b>
+      Machine-to-machine traffic inside Meta's data centers dwarfs user-facing traffic by "several orders of magnitude." Every design decision below exists to keep that internal network fast, cheap, and operable by small teams of engineers despite exponential growth.
+    </div>
+  </section>
+
+  <!-- ============ TIMELINE ============ -->
+  <section class="block" id="timeline">
+    <h2 class="sec">A quarter-century in one timeline</h2>
+    <p class="lede">The arc runs from software scaling, to purpose-built network hardware, to whole data centers reorganized around GPUs.</p>
+    <div class="tl">
+      <div class="tl-row">
+        <div class="tl-year">2004–2010</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">Software scales first</span><h4>From one database per college to a global social graph</h4><p>Memcache, TAO, News Feed ranking, and photo services grow the stack; Facebook outgrows colo facilities and builds its first data centers in Prineville, Ore., and Forest City, N.C.</p></div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-year">2010–2014</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">Scaling hits the network</span><h4>Clusters hit their limits</h4><p>Cluster-based networks (big high-radix switches, 3+1 redundancy) cap out on port density and force oversubscription between clusters. Machine-to-machine traffic doubles faster than every year.</p></div>
+      </div>
+      <div class="tl-row is-teal">
+        <div class="tl-year">2014</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">Disaggregation arrives</span><h4>Data center fabric</h4><p>The whole building becomes one non-oversubscribed network of small "pods" and "planes," built from mid-size switches, BGP + ECMP, and heavy automation. First deployed in Altoona.</p></div>
+      </div>
+      <div class="tl-row is-teal">
+        <div class="tl-year">2019</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">4× capacity, fewer chips</span><h4>F16 topology + Minipack</h4><p>16 single-chip 100G planes deliver 1.6 Tbps/rack with 3× fewer fabric ASICs than a 400G alternative. Modular Minipack (and jointly-developed Arista 7368X4) run FBOSS.</p></div>
+      </div>
+      <div class="tl-row is-amber">
+        <div class="tl-year">2020–2023</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">The AI inflection</span><h4>GPUs reshape everything</h4><p>GPU clusters replace "buy unreliable CPUs + mask failures" with tightly-coupled compute. RSC (16k A100, 2022); Grand Teton platform; two 24,576-GPU H100 clusters in late 2023.</p></div>
+      </div>
+      <div class="tl-row is-amber">
+        <div class="tl-year">2024–2026</div><div class="tl-axis"><span class="tl-dot"></span></div>
+        <div class="tl-card"><span class="tl-sub">AI at scale</span><h4>129k clusters, custom silicon, gigawatts</h4><p>129k-H100 cluster; Catalina/GB200 racks up to 140 kW; MTIA silicon; DSF &amp; NSF fabrics; BAG aggregation to build the 1 GW Prometheus cluster.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CHAPTER 2 : 2014 FABRIC ============ -->
+  <section class="block" id="fabric">
+    <h2 class="sec">2014 — The data center fabric</h2>
+    <p class="lede">Meta's "next-generation" network turned the entire building into one flat, high-performance fabric instead of a hierarchy of oversubscribed clusters.</p>
+
+    <h3 class="subh">The problem with clusters</h3>
+    <p>An old cluster was a big deployment unit: hundreds of cabinets aggregated on a few large, high-radix cluster switches. It had hard limits:</p>
+    <ul class="clean">
+      <li><b>Port density caps size.</b> Bigger clusters need bigger switches, available only from a handful of vendors — and the "XXL" bleeding-edge boxes have proprietary internals that need specialized expertise.</li>
+      <li><b>Oversubscription by assumption.</b> Inter-cluster bandwidth was much lower than intra-cluster, which forced applications to stay inside one cluster — exactly what distributed apps don't want.</li>
+      <li><b>Failure blast radius.</b> Large areas depend on a few boxes; hardware or software failure is a big deal.</li>
+      <li><b>Endless balancing.</b> The tension between cluster size, rack bandwidth, and out-of-cluster bandwidth never resolves itself.</li>
+    </ul>
+    <p>The fix: <b>make the entire building one network</b>, built from small, identical units instead of a handful of giant devices.</p>
+
+    <h3 class="subh">The fabric model: pods and planes</h3>
+    <p>The core idea is <b>disaggregation into identical building blocks</b>. The network is composed of "pods" (48-rack units, each served by four <span class="mono">fabric switches</span>) and four independent <b>planes</b> of <span class="mono">spine switches</span> (each scalable to 48 devices). Every fabric switch in every pod connects to every spine switch in its local plane.</p>
+
+    <figure>
+      <svg viewBox="0 0 920 470" role="img" aria-label="Schematic of the 2014 data center fabric topology">
+        <g font-family="Space Grotesk, sans-serif" font-size="13">
+          <text x="460" y="26" text-anchor="middle" font-weight="700" fill="#0e1c2a">4 independent spine planes</text>
+          <g>
+            <g fill="#0a66e1"><rect x="70" y="46" width="150" height="26" rx="6"/><rect x="300" y="46" width="150" height="26" rx="6"/><rect x="530" y="46" width="150" height="26" rx="6"/><rect x="760" y="46" width="150" height="26" rx="6"/></g>
+            <g fill="#ffffff" font-size="12" text-anchor="middle" font-weight="600">
+              <text x="145" y="64">Spine · Plane 1</text><text x="375" y="64">Spine · Plane 2</text>
+              <text x="605" y="64">Spine · Plane 3</text><text x="835" y="64">Spine · Plane 4</text>
+            </g>
+          </g>
+          <text x="460" y="108" text-anchor="middle" font-weight="700" fill="#0e1c2a">fabric switches per pod (4 per pod)</text>
+          <g>
+            <g fill="#0fa3a3"><rect x="70" y="128" width="150" height="26" rx="6"/><rect x="300" y="128" width="150" height="26" rx="6"/><rect x="530" y="128" width="150" height="26" rx="6"/><rect x="760" y="128" width="150" height="26" rx="6"/></g>
+            <g fill="#ffffff" font-size="12" text-anchor="middle" font-weight="600">
+              <text x="145" y="146">FSW 1</text><text x="375" y="146">FSW 2</text><text x="605" y="146">FSW 3</text><text x="835" y="146">FSW 4</text>
+            </g>
+          </g>
+          <g stroke="#9db8d6" stroke-width="1.2" opacity=".7">
+            <line x1="145" y1="72" x2="145" y2="128"/><line x1="375" y1="72" x2="375" y2="128"/>
+            <line x1="605" y1="72" x2="605" y2="128"/><line x1="835" y1="72" x2="835" y2="128"/>
+          </g>
+          <text x="460" y="196" text-anchor="middle" font-weight="700" fill="#0e1c2a">server pods — each 48 racks, TORs wired to all 4 fabric switches</text>
+          <g>
+            <g fill="#16304a" stroke="#2b4a68">
+              <rect x="50" y="212" width="150" height="70" rx="8"/><rect x="260" y="212" width="150" height="70" rx="8"/>
+              <rect x="470" y="212" width="150" height="70" rx="8"/><rect x="680" y="212" width="150" height="70" rx="8"/>
+            </g>
+            <g fill="#cfe0f0" font-size="12" text-anchor="middle">
+              <text x="125" y="242">Pod · 48 racks</text><text x="335" y="242">Pod · 48 racks</text>
+              <text x="545" y="242">Pod · 48 racks</text><text x="755" y="242">Pod · 48 racks</text>
+              <text x="125" y="262" font-size="11" fill="#93aec9">TOR × 4·40G</text>
+              <text x="335" y="262" font-size="11" fill="#93aec9">TOR × 4·40G</text>
+              <text x="545" y="262" font-size="11" fill="#93aec9">TOR × 4·40G</text>
+              <text x="755" y="262" font-size="11" fill="#93aec9">TOR × 4·40G</text>
+            </g>
+          </g>
+          <g stroke="#7fb2e8" stroke-width="1.5">
+            <line x1="145" y1="154" x2="125" y2="212"/><line x1="375" y1="154" x2="335" y2="212"/>
+            <line x1="605" y1="154" x2="545" y2="212"/><line x1="835" y1="154" x2="755" y2="212"/>
+          </g>
+          <g>
+            <text x="460" y="330" text-anchor="middle" font-weight="700" fill="#0e1c2a">edge pods → backbone</text>
+            <rect x="350" y="346" width="220" height="34" rx="8" fill="#e8a33d"/>
+            <text x="460" y="368" text-anchor="middle" font-size="12.5" fill="#fff" font-weight="600">Edge pod · up to 7.68 Tbps</text>
+          </g>
+          <g stroke="#d9b06b" stroke-width="1.5"><line x1="460" y1="282" x2="460" y2="346"/></g>
+          <text x="460" y="442" text-anchor="middle" font-size="12" fill="#5c6c7b">All Layer-3 · BGP with ECMP · “distributed control, centralized override” · stateless building block</text>
+        </g>
+      </svg>
+      <figcaption>Fig. 1 — The 2014 fabric: identical pods interconnect through spine planes; edge pods link the building to the backbone. (Schematic, after the Meta post.)</figcaption>
+    </figure>
+
+    <div class="digest">
+      <div class="dig"><b>160 Gbps</b><span>Per-rack uplink (4×40G TOR) for 10G-connected servers</span></div>
+      <div class="dig teal"><b>4 : 1 → 1 : 1</b><span>Start at 4:1 oversubscription, scale to non-blocking by adding spine switches</span></div>
+      <div class="dig"><b>10×</b><span>Intra-building capacity vs. the equivalent cluster design, growable past 50×</span></div>
+      <div class="dig teal"><b>48 racks</b><span>Uniform pod size that fits any floor plan</span></div>
+    </div>
+
+    <h3 class="subh">Design decisions worth copying</h3>
+    <ul class="clean">
+      <li><b>One protocol, one control philosophy.</b> Plain BGP4 for everything, plus a centralized controller that can override paths by pure software — "distributed control, centralized override." Heavy use of ECMP with flow hashing for near-ideal load distribution.</li>
+      <li><b>Plan for scale, not for day-one.</b> Pre-build all passive infrastructure (the "skeleton"), start at 4:1 oversubscription with 12 of 48 spines, and grow to 2:1 or 1:1 by adding spine devices — no redesign required.</li>
+      <li><b>Physical layout is part of the design.</b> Spine and edge live in central BDF rooms, pre-equipped early; data halls attach identically. Long "straight-line" trunks keep cabling simple; each spine plane is one failure domain you can take out of service safely.</li>
+      <li><b>Automate above the device.</b> Config is defined at the fabric level and rendered down to each box; devices self-discover their role; monitoring keys on baselines/outliers with auto-remediation. "The overall behavior is more important than an individual box or link."</li>
+      <li><b>Backward compatibility via "virtual clusters."</b> Clusters survive as logical named areas over the fabric, so the rest of the stack is untouched.</li>
+    </ul>
+  </section>
+
+  <!-- ============ CHAPTER 3 : F16 ============ -->
+  <section class="block" id="f16">
+    <h2 class="sec">2019 — F16 and Minipack</h2>
+    <p class="lede">Four years on, the fabric served 2.6 billion people across 15 regions. To quadruple capacity without being crushed by power and optics constraints, Meta reworked the topology and the switch itself.</p>
+
+    <div class="grid2">
+      <figure>
+        <img src="https://media.doubao.com/space/api/box/stream/download/all_by_mount_point/QUZeb2l7hoEwoexvetSc0RwOned" alt="Rows of server racks inside a Meta data center" loading="lazy">
+        <figcaption>The kind of facility F16 is designed for — dense racks, tightly managed cabling, and power as a hard budget.</figcaption>
+      </figure>
+      <div>
+        <h3 class="subh" style="margin-top:6px">Two pressures, two constraints</h3>
+        <p>Demand demanded <b>higher per-rack speeds</b> (1.6T and beyond) and <b>bigger regions</b> (from 3 to 6 buildings each). But the network could not eat a disproportionate share of a region's power, and the industry couldn't supply 400G optics at Meta's scale and schedule.</p>
+        <p><b>The pivot:</b> instead of chasing 400G links, use mature <span class="mono">100G CWDM4-OCP</span> optics to get the <em>same</em> 4× capacity — by splitting into more, smaller planes.</p>
+      </div>
+    </div>
+
+    <h3 class="subh">F4 → F16: same capacity, radically fewer chips</h3>
+    <p>Both paths use Broadcom's <span class="mono">Tomahawk 3</span> (TH3) ASIC. A "F4" design would need 4 multichip 400G fabric switches (48 ASICs per pod); the F16 design instead builds <b>16 single-chip 100G planes</b> with just <b>16 ASICs per pod</b> — 3× fewer fabric chips and control planes, at half the power of the previous Backpack switch.</p>
+
+    <div class="chartbox">
+      <div class="cap">F4 vs F16 — same 1.6 Tbps per rack, but flatter and cheaper</div>
+      <div class="tabs">
+        <button data-t="a" class="act">F4 (4×400G)</button>
+        <button data-t="b">F16 (16×100G)</button>
+      </div>
+      <div id="chartA" class="chart" data-tab="a"></div>
+      <div id="chartB" class="chart" data-tab="b" style="display:none"></div>
+    </div>
+
+    <div class="digest">
+      <div class="dig"><b>48 → 16</b><span>Fabric switch ASICs + control planes per pod</span></div>
+      <div class="dig teal"><b>9 → 4</b><span>Chip tiers in the topology (2.25× flatter)</span></div>
+      <div class="dig"><b>6 hops</b><span>Intra-fabric path, always best case (was 6–12)</span></div>
+      <div class="dig teal"><b>8 hops</b><span>Building-to-building path (was up to 24)</span></div>
+    </div>
+
+    <h3 class="subh">Minipack: one ASIC, many roles</h3>
+    <p>Minipack is a <b>128-port 100G switch on a single 12.8T ASIC</b>, using half the power and space of the multichip Backpack — yet it keeps a chassis's flexibility through swappable <b>Port Interface Modules (PIMs)</b>: PIM-16Q supports 16×100G, or in retimer mode 8×200G, or 16×40G; PIM-4DD supports 4×400G. The same box can serve as fabric switch, spine, or aggregator, and can be upgraded speed-by-speed as optics mature.</p>
+    <ul class="clean">
+      <li><b>MiniLake control module:</b> a custom COM-Express microserver so switches are managed "like servers."</li>
+      <li><b>Reverse gearboxes:</b> bridge TH3's 50G PAM4 SerDes to the mature 25G-NRZ 100G optics.</li>
+      <li><b>HGRID:</b> the aggregation layer scales regions to six F16-equipped buildings, flattening East-West traffic.</li>
+      <li><b>Second source:</b> the jointly-designed Arista 7368X4 offers a redundant supply chain; both run FBOSS and are contributed to OCP.</li>
+    </ul>
+    <div class="note teal">
+      <b class="lbl">The pattern repeats</b>
+      "We contribute the complete design package to OCP," "one single-chip design that fulfills multiple roles," "manage switches like servers," "early deployment, stay in production, iterate." These are the same principles from 2014, applied to the switch hardware itself.
+    </div>
+  </section>
+
+  <!-- ============ CHAPTER 4 : AI INFLECTION ============ -->
+  <section class="block" id="ai-inflection">
+    <h2 class="sec">2020–2023 — The AI inflection</h2>
+    <p class="lede">AI workloads broke the assumptions of a decade. A CPU is a load–store machine; a GPU is a vector/matrix machine doing orders of magnitude more math. That changes how a data center is built.</p>
+
+    <h3 class="subh">From "mask failures" to "keep the job alive"</h3>
+    <p>Web workloads scale by buying cheap, unreliable CPUs and masking failures with software. AI is different: <b>one training job runs across thousands of GPUs synchronously</b>, and any single straggler or failure halts the whole job. Meta's initial AI clusters interconnected 4,000 GPUs; with LLMs, jobs grew from 128 GPUs to 2,000 to 4,000 within weeks. Through industry collaboration Meta drove the training interruption rate down ~50×.</p>
+
+    <h3 class="subh">Grand Teton and the 24k H100 clusters</h3>
+    <p>Announced at OCP 2022, <b>Grand Teton</b> is Meta's in-house GPU platform: a monolithic chassis integrating power, control, compute, and fabric interfaces, with 8 GPUs and a 1:1 GPU-to-RDMA-NIC mapping, contributed to OCP. In late 2023 Meta built <b>two 24,576-GPU H100 clusters</b> — one on RoCE, one on InfiniBand — each sized to consume all the power available in a building (typically low tens of megawatts). They trained Llama 3.</p>
+
+    <div class="grid2">
+      <div class="card">
+        <h4>Cluster 1 — RoCE</h4>
+        <p>RDMA over Converged Ethernet built on Arista 7800 with <span class="mono">Wedge400</span> and <span class="mono">Minipack2</span> OCP rack switches.</p>
+      </div>
+      <div class="card">
+        <h4>Cluster 2 — InfiniBand</h4>
+        <p>NVIDIA <span class="mono">Quantum2</span> InfiniBand fabric. Both interconnect 400G endpoints.</p>
+      </div>
+    </div>
+
+    <h3 class="subh">Engineering around a tight power budget</h3>
+    <p>Hardware lead times are long, so Meta adapted: it modified Grand Teton to raise GPU TDP to <b>700W</b> and moved to HBM3 — but had to stay in the existing <b>air-cooled</b> environment, forcing mechanical and thermal redesign and re-validation. It also reorganized the data hall: moving supporting "reader" services out, packing as many GPU racks as possible to maximize compute density and network size.</p>
+
+    <div class="note amber">
+      <b class="lbl">The power-limited design rule</b>
+      Data centers are increasingly <em>power-constrained, not space-constrained</em>. Cluster size is now set by "all the power available in a building," not by network port density — the inverse of the 2014 problem.
+    </div>
+  </section>
+
+  <!-- ============ CHAPTER 5 : AI SCALE-UP ============ -->
+  <section class="block" id="ai-scale">
+    <h2 class="sec">2024–2026 — AI at massive scale</h2>
+    <p class="lede">The trajectory kept steepening: a 129k-GPU single cluster, rack power past 100 kW, custom silicon, and the first gigawatt AI cluster.</p>
+
+    <div class="chartbox">
+      <div class="cap">Largest single training cluster at Meta (GPU count) — the scale-up story</div>
+      <div id="chartC" class="chart"></div>
+    </div>
+
+    <h3 class="subh">129,000 GPUs in one cluster</h3>
+    <p>To scale another order of magnitude, Meta did something unprecedented: it <b>emptied five production data centers</b> and built a single 129k-H100 cluster in months. (By end of 2024 the fleet target was 350,000 H100s — roughly 600,000 H100-equivalent of compute.) Llama 3.1 405B alone trained across more than 16,000 H100s on 15 trillion tokens.</p>
+
+    <h3 class="subh">Catalina racks and the power wall</h3>
+    <p>At OCP 2024 Meta unveiled <b>Catalina</b>, a high-power rack built around NVIDIA's <span class="mono">GB200 Grace Blackwell</span> superchip and the new ORv3 spec supporting up to <b>140 kW</b>. A Catalina pod is six racks: two compute racks with 72 Blackwell GPUs (~140 kW) plus four <b>Air-Assisted Liquid Cooling (AALC)</b> racks, because legacy data halls have no facility liquid cooling. The pod yields ~360 PFLOPS of FP16 — consuming over 800× the power of a typical CPU while producing hundreds of thousands of times the compute.</p>
+
+    <div class="grid2">
+      <figure>
+        <img src="https://media.doubao.com/space/api/box/stream/download/all_by_mount_point/QJD8bgSXsotR64xuDfpcde6xneh" alt="A data center technician working beside server racks" loading="lazy">
+        <figcaption>From network switches to GPUs, the same ethos: open hardware, designed in-house, operated like servers.</figcaption>
+      </figure>
+      <div>
+        <h3 class="subh" style="margin-top:6px">Custom silicon: MTIA</h3>
+        <p><b>MTIA</b> (Meta Training and Inference Accelerator) is Meta's family of custom chips. MTIA v1 arrived in 2023; <b>MTIA v2</b> (2024) is optimized for ranking and recommendation <em>inference</em>, is deployed at scale for ads workloads, and delivers large efficiency gains over vendor silicon. A training chip for ranking/recommendations is ramping, with more chips in development.</p>
+        <p>Heterogeneity is deliberate — Meta runs AMD MI300X, H200, B200, GB200, and MTIA together — and it's why <b>open standards</b> (PyTorch, Triton, OCP) matter: a consistent programming interface lets engineers target any accelerator.</p>
+      </div>
+    </div>
+
+    <h3 class="subh">Where the silicon roadmap is heading</h3>
+    <ul class="clean">
+      <li><b>Advanced packaging:</b> with reticle size capped at 830 mm², scaling means chiplets via 2.5D/3D packaging — new cooling and efficiency challenges.</li>
+      <li><b>Memory disaggregation:</b> reasoning models and test-time inference pressure memory; expect HBM stacked by chiplets, and possibly off-chip/off-machine memory.</li>
+      <li><b>Silicon photonics:</b> the path beyond 3.2T of "silicon shoreline" and away from power-hungry backplanes, trading power for range and scale.</li>
+    </ul>
+  </section>
+
+  <!-- ============ CHAPTER 6 : AI NETWORKING ============ -->
+  <section class="block" id="ai-net">
+    <h2 class="sec">AI networking: scale-out and scale-up</h2>
+    <p class="lede">AI clusters need a dedicated, isolated backend network that connects every GPU at high bandwidth and low, bounded latency. This is where Meta's fabric lineage most directly meets the AI era.</p>
+
+    <h3 class="subh">The AI Zone fabric</h3>
+    <p>For training, each cluster runs <b>two independent networks</b>: a frontend (FE) for data ingestion and checkpointing, and a backend (BE) for training traffic. The backend is a two-stage Clos "AI Zone": <span class="mono">RTSW</span> rack training switches (scale-up within the rack over copper DAC) → <span class="mono">CTSW</span> cluster training switches (scale-out, deep buffers) → <span class="mono">ATSW</span> aggregation across zones. The transport for most AI capacity is <b>RoCEv2</b>.</p>
+
+    <figure>
+      <svg viewBox="0 0 920 330" role="img" aria-label="AI Zone three-tier backend network">
+        <g font-family="Space Grotesk, sans-serif" font-size="13">
+          <text x="460" y="24" text-anchor="middle" font-weight="700" fill="#0e1c2a">Backend AI Zone — dedicated training fabric</text>
+          <g fill="#0a66e1"><rect x="120" y="50" width="150" height="28" rx="7"/><rect x="385" y="50" width="150" height="28" rx="7"/><rect x="650" y="50" width="150" height="28" rx="7"/></g>
+          <g fill="#fff" text-anchor="middle" font-size="12.5" font-weight="600"><text x="195" y="69">ATSW · aggregation</text><text x="460" y="69">ATSW · aggregation</text><text x="725" y="69">ATSW · aggregation</text></g>
+          <g fill="#0fa3a3"><rect x="120" y="140" width="150" height="28" rx="7"/><rect x="385" y="140" width="150" height="28" rx="7"/><rect x="650" y="140" width="150" height="28" rx="7"/></g>
+          <g fill="#fff" text-anchor="middle" font-size="12.5" font-weight="600"><text x="195" y="159">CTSW · cluster spine</text><text x="460" y="159">CTSW · cluster spine</text><text x="725" y="159">CTSW · cluster spine</text></g>
+          <g fill="#16304a" stroke="#2b4a68"><rect x="120" y="230" width="150" height="34" rx="7"/><rect x="385" y="230" width="150" height="34" rx="7"/><rect x="650" y="230" width="150" height="34" rx="7"/></g>
+          <g fill="#cfe0f0" text-anchor="middle" font-size="12"><text x="195" y="251">RTSW · rack</text><text x="460" y="251">RTSW · rack</text><text x="725" y="251">RTSW · rack</text></g>
+          <g stroke="#9db8d6" stroke-width="1.3"><line x1="195" y1="78" x2="195" y2="140"/><line x1="460" y1="78" x2="460" y2="140"/><line x1="725" y1="78" x2="725" y2="140"/><line x1="195" y1="168" x2="195" y2="230"/><line x1="460" y1="168" x2="460" y2="230"/><line x1="725" y1="168" x2="725" y2="230"/></g>
+          <g stroke="#7fb2e8" stroke-width="1.2" opacity=".6"><line x1="270" y1="64" x2="385" y2="64"/><line x1="535" y1="64" x2="650" y2="64"/><line x1="270" y1="154" x2="385" y2="154"/><line x1="535" y1="154" x2="650" y2="154"/></g>
+          <g fill="#5c6c7b" font-size="12" text-anchor="middle">
+            <text x="460" y="292">GPU racks connect via copper DAC to RTSW; RTSW → CTSW on 400G single-mode fiber.</text>
+            <text x="460" y="310">Two-stage Clos · RoCEv2 · deep-buffer CTSW for lossless transport</text>
+          </g>
+        </g>
+      </svg>
+      <figcaption>Fig. 2 — The AI Zone backend: RTSW (scale-up) → CTSW (scale-out) → ATSW (aggregation). (Schematic, after the RoCE post.)</figcaption>
+    </figure>
+
+    <h3 class="subh">DSF vs NSF: two fabrics for different jobs</h3>
+    <p>At OCP 2025 Meta shared two complementary fabric architectures for the next generation:</p>
+    <div class="tblwrap dsftable">
+      <table style="width:100%">
+        <colgroup><col style="width:20%"><col style="width:40%"><col style="width:40%"></colgroup>
+        <thead><tr><th></th><th>DSF — Disaggregated Schedule Fabric</th><th>NSF — Non-Scheduled Fabric</th></tr></thead>
+        <tbody>
+          <tr><td><b>Mechanism</b></td><td>VOQ (virtual output queue) based scheduling, powered by open OCP-SAI + FBOSS</td><td>Shallow-buffer, disaggregated Ethernet switches</td></tr>
+          <tr><td><b>Best for</b></td><td>Scale-out interconnect across entire buildings; a full-size DSF L2 zone is ~18k 800G GPUs</td><td>Low round-trip latency, adaptive routing, the foundation for gigawatt-scale clusters like Prometheus</td></tr>
+          <tr><td><b>Scale</b></td><td>Evolved to dual-stage, non-blocking, up to 18,432 XPUs</td><td>Three-tier (RTSW/FTSW/STSW) with ECMP; typical oversubscription L2→BAG ≈ 4.5:1</td></tr>
+          <tr><td><b>Endpoints</b></td><td>Ethernet-based RoCE to XPUs/NICs, including Meta's MTIA</td><td>400G/800G Ethernet NICs on GB300 and similar accelerators</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="dsfstack">
+      <div class="card"><h4>DSF — Disaggregated Schedule Fabric</h4><ul class="clean">
+        <li><b>Mechanism:</b> VOQ (virtual output queue) based scheduling, powered by open OCP-SAI + FBOSS.</li>
+        <li><b>Best for:</b> scale-out interconnect across entire buildings; a full-size DSF L2 zone is ~18k 800G GPUs.</li>
+        <li><b>Scale:</b> evolved to dual-stage, non-blocking, up to 18,432 XPUs.</li>
+        <li><b>Endpoints:</b> Ethernet-based RoCE to XPUs/NICs, including Meta's MTIA.</li>
+      </ul></div>
+      <div class="card"><h4>NSF — Non-Scheduled Fabric</h4><ul class="clean">
+        <li><b>Mechanism:</b> shallow-buffer, disaggregated Ethernet switches.</li>
+        <li><b>Best for:</b> low round-trip latency, adaptive routing, the foundation for gigawatt-scale clusters like Prometheus.</li>
+        <li><b>Scale:</b> three-tier (RTSW/FTSW/STSW) with ECMP; typical oversubscription L2→BAG ≈ 4.5:1.</li>
+        <li><b>Endpoints:</b> 400G/800G Ethernet NICs on GB300 and similar accelerators.</li>
+      </ul></div>
+    </div>
+
+    <h3 class="subh">BAG: connecting regions into a gigawatt cluster</h3>
+    <p>Even a full building isn't enough. <b>Backend Aggregation (BAG)</b> is a centralized Ethernet "super spine" that stitches DSF and NSF fabrics together across data center buildings and regions — enabling mega-clusters. In <b>Prometheus</b>, Meta's 1-gigawatt AI cluster spanning 5+ buildings (plus weatherproof tents and colo facilities) and tens of thousands of GPUs, BAG interconnects regional fabrics with <b>petabit-scale</b> capacity (16–48 Pbps per region pair).</p>
+    <ul class="clean">
+      <li><b>Hardware:</b> modular chassis with <span class="mono">Jericho3</span> line cards (up to 432×800G ports); deep buffers to support lossless congestion control (PFC) over long inter-BAG cables.</li>
+      <li><b>Routing:</b> eBGP with link-bandwidth attributes and Unequal-Cost Multipath (UCMP); MACsec protects BAG-to-BAG links.</li>
+      <li><b>Topology:</b> planar (one-to-one, simpler) or spread (distributed links, more resilient) connections between regions.</li>
+      <li><b>Resilience:</b> failure domains analyzed at BAG, data hall, and power-distribution levels; planes drained and routes aggregated to avoid blackholing.</li>
+    </ul>
+
+    <div class="digest">
+      <div class="dig"><b>51.2 Tbps</b><span>New 51T OCP switches: Minipack3 (Tomahawk5), Cisco 8501, Minipack3N (Spectrum-4)</span></div>
+      <div class="dig teal"><b>18,432</b><span>XPUs per non-blocking dual-stage DSF zone</span></div>
+      <div class="dig"><b>16–48 Pbps</b><span>BAG-to-BAG capacity per region pair</span></div>
+      <div class="dig teal"><b>ESUN</b><span>Meta-led OCP initiative applying Ethernet to scale-up networking</span></div>
+    </div>
+
+    <div class="note">
+      <b class="lbl">Open by design</b>
+      The 51T platforms run FBOSS on OCP-SAI; optics span 2×400G FR4 (3 km), 2×400G FR4-LITE (500 m), and 400G/2×400G DR4. In 2026 Meta also released <b>MetaRoCE</b> — a clean-sheet RDMA transport for AI-scale Ethernet, with spec, reference software, and a compliance suite contributed to OCP.
+    </div>
+  </section>
+
+  <!-- ============ CHAPTER 7 : STORAGE & SW ============ -->
+  <section class="block" id="storage">
+    <h2 class="sec">Storage and software: the rest of the stack</h2>
+    <p class="lede">A data center is more than switches and GPUs. Storage and the control plane are where AI's "data-hungry" nature and Meta's software-first culture show up.</p>
+
+    <h3 class="subh">Storage: "if AI is the brain, storage is the memory"</h3>
+    <p>Meta runs <b>hundreds of exabyte-scale storage clusters</b> under a horizontally-scalable block layer called <b>Tectonic</b>. For AI, the old metadata-heavy BLOB stack (with global lookups that could take hundreds of milliseconds) was a bottleneck — a single slow storage fetch can stall every GPU in a synchronized training step.</p>
+    <ul class="clean">
+      <li><b>Unified metadata schema</b> backed by ZippyDB collapses multi-layer lookups into O(1) path resolution.</li>
+      <li><b>No data-plane proxy:</b> a fat client SDK streams bytes directly from storage servers to GPUs, cutting latency and power.</li>
+      <li><b>Regional deployment:</b> lean BLOB storage is colocated with GPUs in every AI region, since power spent on storage is power not spent on GPUs.</li>
+      <li>For training, a home-grown FUSE API over Tectonic (optimized for flash) plus a co-developed <b>Hammerspace</b> parallel NFS let thousands of GPUs checkpoint synchronously and debug interactively.</li>
+    </ul>
+
+    <h3 class="subh">The software that binds it together</h3>
+    <div class="gloss">
+      <div class="gterm"><b>FBOSS</b><span>Meta's network operating system — one image across all generations of switches, built on OCP-SAI.</span></div>
+      <div class="gterm"><b>Twine / MAST</b><span>Cluster management; evolved to schedule long-distance training across distributed data centers.</span></div>
+      <div class="gterm"><b>PyTorch / Triton</b><span>Open ML software that abstracts away hardware differences across AMD, NVIDIA, and MTIA.</span></div>
+      <div class="gterm"><b>Tectonic / BLOB</b><span>Regional, multi-tenant storage fabric with erasure coding, media tiering, and flash-optimized AI paths.</span></div>
+    </div>
+  </section>
+
+  <!-- ============ CHAPTER 8 : THROUGHLINE ============ -->
+  <section class="block" id="throughline">
+    <h2 class="sec">The throughline</h2>
+    <p class="lede">Look past the acronyms and the same five moves keep reappearing — that's what makes Meta's approach recognizable across fifteen years.</p>
+    <div class="prin">
+      <div class="p"><div class="n">→</div><h4>Disaggregate</h4><p>Pods &amp; planes in 2014; single-chip Minipack in 2019; DSF/NSF + BAG in the AI era.</p></div>
+      <div class="p"><div class="n">→</div><h4>Open</h4><p>OCP co-founder; every major design contributed; open silicon &amp; software standards.</p></div>
+      <div class="p"><div class="n">→</div><h4>Automate</h4><p>Fabric-level config, device self-discovery, auto-remediation, "manage like servers."</p></div>
+      <div class="p"><div class="n">→</div><h4>Respect physics</h4><p>Power and optics budgets drive topology choices — 100G optics over unavailable 400G, air-cooled before liquid.</p></div>
+      <div class="p"><div class="n">→</div><h4>Mature tech, early deploy</h4><p>Prefer what's proven, ship it early, stay in production, and iterate continuously.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ REFERENCES ============ -->
+  <section class="block" id="refs">
+    <h2 class="sec">Sources &amp; further reading</h2>
+    <p class="lede">This tutorial is built from Meta's own engineering posts. The two you asked me to read are marked with a dot.</p>
+    <ul class="refs">
+      <li><span class="y"><span class="keydot"></span>2014</span><a href="https://engineering.fb.com/2014/11/14/production-engineering/introducing-data-center-fabric-the-next-generation-facebook-data-center-network/">Introducing data center fabric, the next-generation Facebook data center network</a></li>
+      <li><span class="y"><span class="keydot"></span>2019</span><a href="https://engineering.fb.com/2019/03/14/data-center-engineering/f16-minipack/">Reinventing Facebook's data center network (F16 &amp; Minipack)</a></li>
+      <li><span class="y">2022</span><a href="https://engineering.fb.com/2024/03/12/data-center-engineering/building-metas-genai-infrastructure/">Building Meta's GenAI Infrastructure (24k GPU clusters)</a></li>
+      <li><span class="y">2024</span><a href="https://engineering.fb.com/2024/06/12/data-infrastructure/training-large-language-models-at-scale-meta/">How Meta trains large language models at scale</a></li>
+      <li><span class="y">2024</span><a href="https://engineering.fb.com/2024/08/05/data-center-engineering/roce-network-distributed-ai-training-at-scale/">RoCE networks for distributed AI training at scale</a></li>
+      <li><span class="y">2024</span><a href="https://engineering.fb.com/2024/10/15/data-infrastructure/metas-open-ai-hardware-vision/">Meta's open AI hardware vision (Catalina, Grand Teton)</a></li>
+      <li><span class="y">2025</span><a href="https://engineering.fb.com/2025/09/29/data-infrastructure/metas-infrastructure-evolution-and-the-advent-of-ai/">Meta's Infrastructure Evolution and the Advent of AI</a></li>
+      <li><span class="y">2025</span><a href="https://engineering.fb.com/2025/10/13/data-infrastructure/ocp-summit-2025-the-open-future-of-networking-hardware-for-ai/">OCP Summit 2025: The Open Future of Networking Hardware for AI</a></li>
+      <li><span class="y">2026</span><a href="https://engineering.fb.com/2026/02/09/data-center-engineering/building-prometheus-how-backend-aggregation-enables-gigawatt-scale-ai-clusters/">Building Prometheus: Backend Aggregation for Gigawatt-Scale AI Clusters</a></li>
+      <li><span class="y">2026</span><a href="https://engineering.fb.com/2026/07/01/data-infrastructure/metas-ai-storage-blueprint-at-scale/">Meta's AI Storage Blueprint at Scale</a></li>
+      <li><span class="y">2026</span><a href="https://engineering.fb.com/2026/08/24/networking-traffic/metaroce-rdma-transport-ai-ethernet/">MetaRoCE: A New RDMA Transport Built for AI-Scale Ethernet</a></li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>A tutorial synthesized from Engineering at Meta public posts · figures are schematics for explanation, not literal drawings</span>
+    <span class="mono">2014 → 2026</span>
+  </div>
+</footer>
+
+<script>
+// ---------- scroll progress + nav ----------
+const prog=document.getElementById('prog');
+const secs=[...document.querySelectorAll('section.block')];
+const links=[...document.querySelectorAll('.chips a')];
+function onScroll(){
+  const h=document.documentElement.scrollHeight-innerHeight;
+  prog.style.width=(h>0?(scrollY/h*100):0)+'%';
+  let cur=secs[0];
+  secs.forEach(s=>{if(s.getBoundingClientRect().top<=90)cur=s});
+  links.forEach(l=>l.classList.toggle('act', l.getAttribute('href')==='#'+cur.id));
+}
+addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+// ---------- charts (lazy-init for hidden tab panels) ----------
+const FONT='Space Grotesk, Noto Sans, sans-serif';
+const INK='#0e1c2a',BLUE='#0a66e1',TEAL='#0fa3a3',AMBER='#e8a33d',GRID='#e3e8ef';
+const CHARTS={}, OPTIONS={};
+
+function base(extra){
+  return Object.assign({
+    textStyle:{fontFamily:FONT,color:INK},
+    grid:{left:8,right:16,top:30,bottom:6,containLabel:true},
+    tooltip:{trigger:'axis'},
+    backgroundColor:'transparent'
+  },extra);
+}
+function initChart(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  if(CHARTS[id]){ CHARTS[id].resize(); return; }
+  if(!window.echarts) return;
+  const c=echarts.init(el,null,{renderer:'canvas'});
+  c.setOption(OPTIONS[id]); CHARTS[id]=c; el.dataset.inited='1';
+  addEventListener('resize',()=>{ if(CHARTS[id]) CHARTS[id].resize(); });
+}
+
+// F4 vs F16 comparison
+const cats=['Fabric ASICs\nper pod','Chip tiers\nin topology','Intra-fabric\nhops (best)','Intra-fabric\nhops (worst)','Building-to-\nbuilding hops'];
+OPTIONS.chartA=base({
+  xAxis:{type:'category',data:cats,axisLine:{lineStyle:{color:GRID}},axisTick:{show:false},axisLabel:{fontSize:11,lineHeight:14}},
+  yAxis:{type:'value',splitLine:{lineStyle:{color:GRID}},axisLabel:{fontSize:11}},
+  series:[{name:'F4 (multichip 400G)',type:'bar',data:[48,9,6,12,24],itemStyle:{color:BLUE,borderRadius:[4,4,0,0]},barMaxWidth:30,label:{show:true,position:'top',fontWeight:600,fontSize:11}}]
+});
+OPTIONS.chartB=base({
+  xAxis:{type:'category',data:cats,axisLine:{lineStyle:{color:GRID}},axisTick:{show:false},axisLabel:{fontSize:11,lineHeight:14}},
+  yAxis:{type:'value',splitLine:{lineStyle:{color:GRID}},axisLabel:{fontSize:11}},
+  series:[{name:'F16 (16× single-chip 100G)',type:'bar',data:[16,4,6,6,8],itemStyle:{color:TEAL,borderRadius:[4,4,0,0]},barMaxWidth:30,label:{show:true,position:'top',fontWeight:600,fontSize:11}}]
+});
+// cluster scale-up
+OPTIONS.chartC=base({grid:{left:8,right:24,top:30,bottom:6,containLabel:true}});
+OPTIONS.chartC.xAxis={type:'category',data:['2020\ninitial','2022\nRSC','2023\n24k H100','2025\n129k H100','2026\nPrometheus GW'],axisLine:{lineStyle:{color:GRID}},axisTick:{show:false},axisLabel:{fontSize:11,lineHeight:14}};
+OPTIONS.chartC.yAxis={type:'value',name:'GPUs',nameTextStyle:{fontSize:11,color:'#5c6c7b'},splitLine:{lineStyle:{color:GRID}},axisLabel:{fontSize:11,formatter:v=>v>=1000?Math.round(v/1000)+'k':v}};
+OPTIONS.chartC.series=[{
+  name:'Largest single training cluster',type:'line',data:[4096,16000,24576,129000,180000],
+  smooth:true,symbolSize:9,lineStyle:{width:3,color:BLUE},itemStyle:{color:BLUE},
+  areaStyle:{color:{type:'linear',x:0,y:0,x:2,y:0,colorStops:[{offset:0,color:'rgba(10,102,225,.28)'},{offset:1,color:'rgba(10,102,225,.02)'}]}},
+  markPoint:{data:[{type:'max',name:'129k'}],symbolSize:0,label:{formatter:'129k',fontWeight:700,color:AMBER,fontSize:12}}
+}];
+
+// ---------- tabs ----------
+document.querySelectorAll('.tabs').forEach(group=>{
+  group.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      group.querySelectorAll('button').forEach(b=>b.classList.remove('act'));
+      btn.classList.add('act');
+      const t=btn.dataset.t;
+      group.parentElement.querySelectorAll(':scope > [data-tab]').forEach(el=>{
+        if(el.dataset.tab===t){
+          el.style.display='';
+          if(el.classList.contains('chart')){
+            if(el.dataset.inited!=='1') initChart(el.id); else CHARTS[el.id].resize();
+          }
+        }else{
+          el.style.display='none';
+        }
+      });
+    });
+  });
+});
+
+// ---------- load echarts (jsDelivr, fallback cdnjs), then start ----------
+function start(){ initChart('chartA'); initChart('chartC'); }
+function fallback(){
+  document.querySelectorAll('.chart').forEach(el=>{
+    if(el.dataset.inited!=='1') el.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;text-align:center;color:#5c6c7b;font-size:14px;padding:0 16px">Chart could not load (network offline). The key figures appear in the stat cards above.</div>';
+  });
+}
+function addScript(src,onload,onerror){
+  const s=document.createElement('script');s.src=src;
+  s.onload=onload;s.onerror=onerror;document.head.appendChild(s);
+}
+function loadCdnjs(){ addScript('https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js',
+  ()=>window.echarts?start():fallback(), fallback); }
+addScript('https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js',
+  ()=>window.echarts?start():loadCdnjs(), loadCdnjs);
+</script>
+</body>
+</html>
