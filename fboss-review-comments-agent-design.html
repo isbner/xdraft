@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>fboss 评审评论学习 Agent — 设计架构图</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#243450; --line:#334155;
+    --txt:#e2e8f0; --dim:#94a3b8; --blue:#38bdf8; --green:#34d399; --amber:#fbbf24;
+    --rose:#fb7185; --violet:#a78bfa;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;padding:32px 20px 60px;}
+  .wrap{max-width:1500px;margin:0 auto;}
+  h1{font-size:28px;margin-bottom:6px;}
+  .sub{color:var(--dim);font-size:14px;margin-bottom:28px;line-height:1.6;}
+  .stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:30px;}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px;min-width:150px;}
+  .stat b{display:block;font-size:22px;color:var(--blue);}
+  .stat span{font-size:12px;color:var(--dim);}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:26px;}
+  .card h2{font-size:18px;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+  .card h2 .tag{background:var(--blue);color:#082f49;font-size:12px;padding:2px 8px;border-radius:6px;}
+  svg{width:100%;height:auto;display:block;}
+  .foot{color:var(--dim);font-size:12px;margin-top:20px;line-height:1.7;}
+  .note{background:var(--panel2);border:1px dashed var(--amber);border-radius:10px;padding:12px 14px;font-size:13px;color:#fde68a;margin-top:14px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>fboss 评审评论学习 Agent — 设计架构图</h1>
+  <div class="sub">数据源：Meta 开源仓库（meta/fboss 等）· GitHub PR Review 评论 · 面向 ODM 供应商的评审技能沉淀<br>配套调研报告：<code>fboss-review-comments-agent-report.md</code></div>
+
+  <div class="stats">
+    <div class="stat"><b>~1,100</b><span>fboss GitHub 评审评论（实测）</span></div>
+    <div class="stat"><b>2016–2025</b><span>评论时间跨度</span></div>
+    <div class="stat"><b>5 阶段</b><span>采集→清洗→分类→提炼→应用</span></div>
+    <div class="stat"><b>SKILL.md</b><span>每分类一个技能文件</span></div>
+  </div>
+
+  <!-- ===================== 主架构图 ===================== -->
+  <div class="card">
+    <h2><span class="tag">总览</span>五阶段管道 · 数据流与闭环</h2>
+    <svg viewBox="0 0 1460 780" role="img" aria-label="五阶段架构图">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+        </marker>
+        <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#34d399"/>
+        </marker>
+        <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#38bdf8"/>
+        </marker>
+        <marker id="arrr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#fb7185"/>
+        </marker>
+      </defs>
+
+      <!-- 背景网格 -->
+      <rect x="0" y="0" width="1460" height="780" fill="#0f172a"/>
+
+      <!-- ========== 数据源 (顶部) ========== -->
+      <g>
+        <text x="40" y="36" fill="#94a3b8" font-size="13" font-weight="bold">数据源（语料）</text>
+        <rect x="40" y="48" width="300" height="64" rx="10" fill="#1e293b" stroke="#334155"/>
+        <text x="60" y="74" fill="#38bdf8" font-size="15" font-weight="bold">meta/fboss（主语料）</text>
+        <text x="60" y="96" fill="#94a3b8" font-size="12">~1,100 条 PR review 评论 · 2016–2025</text>
+
+        <rect x="390" y="48" width="300" height="64" rx="10" fill="#1e293b" stroke="#334155"/>
+        <text x="410" y="74" fill="#38bdf8" font-size="15" font-weight="bold">相关 Meta OSS 仓库</text>
+        <text x="410" y="96" fill="#94a3b8" font-size="12">folly / thrift / wangle / openbmc（语料少，作补充）</text>
+
+        <rect x="740" y="48" width="300" height="64" rx="10" fill="#1e293b" stroke="#334155"/>
+        <text x="760" y="74" fill="#fbbf24" font-size="15" font-weight="bold">ODM 内部 Meta 反馈</text>
+        <text x="760" y="96" fill="#94a3b8" font-size="12">脱敏后入库（业务自有，增强语料）</text>
+
+        <!-- 数据源 → 采集 -->
+        <line x1="190" y1="112" x2="190" y2="140" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+        <line x1="540" y1="112" x2="540" y2="140" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+        <line x1="890" y1="112" x2="890" y2="140" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+        <text x="430" y="132" fill="#64748b" font-size="11">GitHub REST / GraphQL 抓取</text>
+      </g>
+
+      <!-- ========== 阶段框 (5个) ========== -->
+      <!-- 阶段1 采集 -->
+      <rect x="40" y="146" width="264" height="150" rx="14" fill="#243450" stroke="#38bdf8" stroke-width="2"/>
+      <text x="60" y="176" fill="#38bdf8" font-size="17" font-weight="bold">① 采集 Collecting</text>
+      <line x1="60" y1="186" x2="284" y2="186" stroke="#334155"/>
+      <text x="60" y="210" fill="#e2e8f0" font-size="12.5">· PR 列表 + review 评论抓取</text>
+      <text x="60" y="232" fill="#e2e8f0" font-size="12.5">· 关联 diff_hunk / 文件路径</text>
+      <text x="60" y="254" fill="#e2e8f0" font-size="12.5">· 增量同步（游标 / since）</text>
+      <text x="60" y="276" fill="#e2e8f0" font-size="12.5">· PyGithub / gh CLI 实现</text>
+
+      <!-- 阶段2 清洗 -->
+      <rect x="360" y="146" width="264" height="150" rx="14" fill="#243450" stroke="#38bdf8" stroke-width="2"/>
+      <text x="380" y="176" fill="#38bdf8" font-size="17" font-weight="bold">② 清洗 Cleaning</text>
+      <line x1="380" y1="186" x2="604" y2="186" stroke="#334155"/>
+      <text x="380" y="210" fill="#e2e8f0" font-size="12.5">· 去重 / 过滤噪音(LGTM等)</text>
+      <text x="380" y="232" fill="#e2e8f0" font-size="12.5">· 关联 PR↔文件↔diff 上下文</text>
+      <text x="380" y="254" fill="#e2e8f0" font-size="12.5">· 脱敏（邮箱 / 专有信息）</text>
+      <text x="380" y="276" fill="#e2e8f0" font-size="12.5">· 入库 SQLite / Parquet</text>
+
+      <!-- 阶段3 分类 -->
+      <rect x="680" y="146" width="264" height="150" rx="14" fill="#243450" stroke="#a78bfa" stroke-width="2"/>
+      <text x="700" y="176" fill="#a78bfa" font-size="17" font-weight="bold">③ 分类 Classifying</text>
+      <line x1="700" y1="186" x2="924" y2="186" stroke="#334155"/>
+      <text x="700" y="210" fill="#e2e8f0" font-size="12.5">· LLM 多标签分类（few-shot）</text>
+      <text x="700" y="232" fill="#e2e8f0" font-size="12.5">· 通用层 + 领域层类目体系</text>
+      <text x="700" y="254" fill="#e2e8f0" font-size="12.5">· 嵌入聚类校验类目一致性</text>
+      <text x="700" y="276" fill="#e2e8f0" font-size="12.5">· 抽样人工复核（50–100 条）</text>
+
+      <!-- 阶段4 提炼 -->
+      <rect x="1000" y="146" width="264" height="150" rx="14" fill="#243450" stroke="#34d399" stroke-width="2"/>
+      <text x="1020" y="176" fill="#34d399" font-size="17" font-weight="bold">④ 提炼 Distilling</text>
+      <line x1="1020" y1="186" x2="1244" y2="186" stroke="#334155"/>
+      <text x="1020" y="210" fill="#e2e8f0" font-size="12.5">· 按分类聚合评论</text>
+      <text x="1020" y="232" fill="#e2e8f0" font-size="12.5">· 归纳 关注点 / 核心担忧</text>
+      <text x="1020" y="254" fill="#e2e8f0" font-size="12.5">· 提取 模式 / 正反示例</text>
+      <text x="1020" y="276" fill="#e2e8f0" font-size="12.5">· 生成 SKILL.md 技能文件</text>
+
+      <!-- 阶段5 应用 -->
+      <rect x="40" y="430" width="1224" height="150" rx="14" fill="#243450" stroke="#fb7185" stroke-width="2"/>
+      <text x="60" y="462" fill="#fb7185" font-size="17" font-weight="bold">⑤ 应用 Applying（双路部署 + 反馈闭环）</text>
+      <line x1="60" y1="472" x2="1244" y2="472" stroke="#334155"/>
+      <!-- 双路 -->
+      <rect x="80" y="490" width="520" height="70" rx="10" fill="#1e293b" stroke="#334155"/>
+      <text x="100" y="516" fill="#38bdf8" font-size="14" font-weight="bold">路 A · Agent 内嵌技能</text>
+      <text x="100" y="540" fill="#94a3b8" font-size="12">SKILL.md 挂载到本环境，编码 / PR 评审自动加载 Meta 标准</text>
+      <rect x="660" y="490" width="520" height="70" rx="10" fill="#1e293b" stroke="#334155"/>
+      <text x="680" y="516" fill="#34d399" font-size="14" font-weight="bold">路 B · CI 评审机器人</text>
+      <text x="680" y="540" fill="#94a3b8" font-size="12">reviewdog / danger 将技能规则转为行内评论，自动化检查</text>
+
+      <!-- 阶段间箭头 -->
+      <line x1="304" y1="221" x2="360" y2="221" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+      <line x1="624" y1="221" x2="680" y2="221" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+      <line x1="944" y1="221" x2="1000" y2="221" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+
+      <!-- 阶段3 → 存储 -->
+      <line x1="812" y1="296" x2="812" y2="330" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+      <rect x="660" y="330" width="304" height="52" rx="10" fill="#1e293b" stroke="#a78bfa" stroke-dasharray="5 3"/>
+      <text x="680" y="354" fill="#a78bfa" font-size="13" font-weight="bold">分类化语料库</text>
+      <text x="680" y="372" fill="#94a3b8" font-size="11.5">每条评论 → 标签 + 置信度 + 理由</text>
+
+      <!-- 阶段4 → 存储 -->
+      <line x1="1132" y1="296" x2="1132" y2="330" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+      <rect x="980" y="330" width="304" height="52" rx="10" fill="#1e293b" stroke="#34d399" stroke-dasharray="5 3"/>
+      <text x="1000" y="354" fill="#34d399" font-size="13" font-weight="bold">SKILL.md 技能库</text>
+      <text x="1000" y="372" fill="#94a3b8" font-size="11.5">每分类一个技能 + 顶层总技能</text>
+
+      <!-- 阶段5 输出/闭环 -->
+      <line x1="1132" y1="580" x2="1132" y2="630" stroke="#fb7185" stroke-width="2" marker-end="url(#arrr)"/>
+      <rect x="980" y="630" width="304" height="52" rx="10" fill="#1e293b" stroke="#fb7185" stroke-dasharray="5 3"/>
+      <text x="1000" y="654" fill="#fb7185" font-size="13" font-weight="bold">评审结果 / 新增评论</text>
+      <text x="1000" y="672" fill="#94a3b8" font-size="11.5">命中 / 漏报 → 回流语料库</text>
+
+      <!-- 反馈闭环箭头 -->
+      <path d="M1002 656 C 760 700, 300 700, 210 656 L 210 296" fill="none" stroke="#34d399" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#arrg)"/>
+      <text x="430" y="712" fill="#34d399" font-size="13" font-weight="bold">反馈闭环：新评论 → 重跑分类/提炼 → 技能版本 +1（CMM 式“技能毕业”）</text>
+
+      <!-- 图例 -->
+      <g>
+        <text x="40" y="740" fill="#94a3b8" font-size="12" font-weight="bold">图例</text>
+        <rect x="90" y="727" width="16" height="16" rx="4" fill="#243450" stroke="#38bdf8" stroke-width="2"/>
+        <text x="112" y="740" fill="#e2e8f0" font-size="12">处理阶段</text>
+        <rect x="190" y="727" width="16" height="16" rx="4" fill="#1e293b" stroke="#64748b" stroke-dasharray="4 2"/>
+        <text x="212" y="740" fill="#e2e8f0" font-size="12">数据存储 / 产物</text>
+        <line x1="330" y1="735" x2="370" y2="735" stroke="#34d399" stroke-width="2.5" stroke-dasharray="8 5"/>
+        <text x="378" y="740" fill="#e2e8f0" font-size="12">反馈闭环</text>
+      </g>
+    </svg>
+
+    <div class="note">关键限制（已实测）：fboss 的 GitHub 仓库是内部评审系统的对外镜像；GitHub 上
+    <code>author_association</code> 全部为 CONTRIBUTOR/NONE，无法按身份圈定 Meta 工程师 → 采用"仓库级评审标准"视角运作，并用 ODM 内部反馈补强。</div>
+  </div>
+
+  <!-- ===================== 分类体系图 ===================== -->
+  <div class="card">
+    <h2><span class="tag">分类</span>两层混合分类体系</h2>
+    <svg viewBox="0 0 1460 320" role="img" aria-label="分类体系图">
+      <rect x="0" y="0" width="1460" height="320" fill="#0f172a"/>
+
+      <!-- 通用层 -->
+      <rect x="40" y="40" width="660" height="240" rx="14" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+      <text x="60" y="74" fill="#38bdf8" font-size="16" font-weight="bold">通用层（继承既有分类学，多标签）</text>
+      <text x="60" y="98" fill="#94a3b8" font-size="12">来源：Li et al. 2017（Correctness/决策/管理/社交）+ 近年可维护性细化研究</text>
+
+      <!-- 12 个小格子 -->
+      <g font-size="12.5" fill="#e2e8f0">
+        <rect x="60" y="112" width="120" height="30" rx="8" fill="#243450"/><text x="72" y="132">正确性/边界</text>
+        <rect x="190" y="112" width="120" height="30" rx="8" fill="#243450"/><text x="202" y="132">并发与同步</text>
+        <rect x="320" y="112" width="120" height="30" rx="8" fill="#243450"/><text x="332" y="132">性能</text>
+        <rect x="450" y="112" width="120" height="30" rx="8" fill="#243450"/><text x="462" y="132">风格/可维护性</text>
+        <rect x="580" y="112" width="104" height="30" rx="8" fill="#243450"/><text x="592" y="132">测试</text>
+
+        <rect x="60" y="152" width="120" height="30" rx="8" fill="#243450"/><text x="72" y="172">文档/注释</text>
+        <rect x="190" y="152" width="120" height="30" rx="8" fill="#243450"/><text x="202" y="172">安全</text>
+        <rect x="320" y="152" width="120" height="30" rx="8" fill="#243450"/><text x="332" y="172">接口/API 设计</text>
+        <rect x="450" y="152" width="120" height="30" rx="8" fill="#243450"/><text x="462" y="172">依赖与构建</text>
+        <rect x="580" y="152" width="104" height="30" rx="8" fill="#243450"/><text x="592" y="172">错误处理</text>
+
+        <rect x="60" y="192" width="120" height="30" rx="8" fill="#243450"/><text x="72" y="212">日志/可观测性</text>
+        <rect x="190" y="192" width="120" height="30" rx="8" fill="#243450"/><text x="202" y="212">资源管理</text>
+        <rect x="320" y="192" width="120" height="30" rx="8" fill="#243450"/><text x="332" y="212">PR 决策/管理</text>
+        <rect x="450" y="192" width="120" height="30" rx="8" fill="#243450"/><text x="462" y="212">社交/协作规范</text>
+      </g>
+
+      <!-- 领域层 -->
+      <rect x="760" y="40" width="660" height="240" rx="14" fill="#1e293b" stroke="#34d399" stroke-width="2"/>
+      <text x="780" y="74" fill="#34d399" font-size="16" font-weight="bold">领域层（fboss / 网络交换软件特有）</text>
+      <text x="780" y="98" fill="#94a3b8" font-size="12">ODM 视角：这些类目与硬件/网络交付直接相关，是学习的重点</text>
+
+      <g font-size="12.5" fill="#e2e8f0">
+        <rect x="780" y="112" width="150" height="30" rx="8" fill="#243450"/><text x="792" y="132">硬件抽象（ASIC/PHY）</text>
+        <rect x="940" y="112" width="150" height="30" rx="8" fill="#243450"/><text x="952" y="132">SDK 与驱动</text>
+        <rect x="1100" y="112" width="150" height="30" rx="8" fill="#243450"/><text x="1112" y="132">配置协议/Thrift</text>
+        <rect x="1260" y="112" width="140" height="30" rx="8" fill="#243450"/><text x="1272" y="132">状态机/转发路径</text>
+
+        <rect x="780" y="152" width="150" height="30" rx="8" fill="#243450"/><text x="792" y="172">异步 IO/事件循环</text>
+        <rect x="940" y="152" width="150" height="30" rx="8" fill="#243450"/><text x="952" y="172">兼容与迁移</text>
+        <rect x="1100" y="152" width="150" height="30" rx="8" fill="#243450"/><text x="1112" y="172">编译/构建系统(Buck)</text>
+      </g>
+
+      <!-- 底部结论 -->
+      <rect x="40" y="296" width="1380" height="0" rx="0" fill="none"/>
+      <text x="40" y="252" fill="#fbbf24" font-size="13" font-weight="bold">↓ 输出：每条评论 → 通用层标签 + 领域层标签（多标签，含置信度与理由）</text>
+    </svg>
+  </div>
+
+  <!-- ===================== 技能产物图 ===================== -->
+  <div class="card">
+    <h2><span class="tag">产物</span>SKILL.md 技能文件结构（每分类一个）</h2>
+    <svg viewBox="0 0 1460 380" role="img" aria-label="技能文件结构图">
+      <rect x="0" y="0" width="1460" height="380" fill="#0f172a"/>
+
+      <!-- SKILL.md 文件框 -->
+      <rect x="40" y="36" width="640" height="310" rx="14" fill="#1e293b" stroke="#34d399" stroke-width="2"/>
+      <text x="60" y="68" fill="#34d399" font-size="16" font-weight="bold">SKILL.md（示例：meta-cpp-code-style）</text>
+      <line x1="60" y1="78" x2="660" y2="78" stroke="#334155"/>
+
+      <rect x="60" y="92" width="600" height="70" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="76" y="114" fill="#38bdf8" font-size="13" font-weight="bold">frontmatter（YAML）</text>
+      <text x="76" y="136" fill="#e2e8f0" font-size="12">name: meta-cpp-code-style  ·  description: 含触发词（评审 C++ PR 时自动加载）</text>
+
+      <rect x="60" y="172" width="600" height="34" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="76" y="194" fill="#e2e8f0" font-size="12.5">核心担忧（core concern）：可读性 → 可维护性 → 长期成本</text>
+
+      <rect x="60" y="214" width="600" height="34" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="76" y="236" fill="#e2e8f0" font-size="12.5">检查清单（checklist）：无注释死代码 / 命名 / 缩进2空格 / 行宽80 / churn 控制</text>
+
+      <rect x="60" y="256" width="600" height="34" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="76" y="278" fill="#e2e8f0" font-size="12.5">正例 / 反例（真实评审评论原文摘录，英文保留）</text>
+
+      <rect x="60" y="298" width="600" height="30" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="76" y="318" fill="#e2e8f0" font-size="12.5">+ 可选：脚本 / 资源 / 引用数据</text>
+
+      <!-- 汇总框 -->
+      <rect x="760" y="36" width="660" height="310" rx="14" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
+      <text x="780" y="68" fill="#a78bfa" font-size="16" font-weight="bold">技能库 v1（沉淀物汇总）</text>
+      <line x1="780" y1="78" x2="1400" y2="78" stroke="#334155"/>
+
+      <rect x="780" y="92" width="620" height="44" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="796" y="112" fill="#e2e8f0" font-size="12.5">· meta-code-review（顶层总技能：编排子技能 + 评审输出格式）</text>
+      <rect x="780" y="144" width="620" height="44" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="796" y="164" fill="#e2e8f0" font-size="12.5">· meta-cpp-code-style（风格，最高频类目）</text>
+      <rect x="780" y="196" width="620" height="44" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="796" y="216" fill="#e2e8f0" font-size="12.5">· meta-*-testing / correctness / concurrency / performance …（按语料分布定优先级）</text>
+      <rect x="780" y="248" width="620" height="44" rx="8" fill="#0f172a" stroke="#334155"/>
+      <text x="796" y="268" fill="#e2e8f0" font-size="12.5">· 版本化 + 中文结论 + 英文示例原文</text>
+
+      <!-- 应用 -->
+      <rect x="760" y="306" width="620" height="34" rx="8" fill="#0f172a" stroke="#fb7185"/>
+      <text x="796" y="328" fill="#fb7185" font-size="12.5">应用：挂载 Agent Skills + reviewdog/danger 双路部署 → 反馈闭环持续迭代</text>
+
+      <!-- 箭头 -->
+      <line x1="680" y1="191" x2="760" y2="191" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+    </svg>
+  </div>
+
+  <div class="foot">
+    数据来源：GitHub API 实测（meta/fboss，2026-10-30）+ 公开资料（详见报告《fboss-review-comments-agent-report.md》来源清单）。
+    本图为自包含 SVG，无外部依赖。
+  </div>
+
+</div>
+</body>
+</html>
